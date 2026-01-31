@@ -19,16 +19,21 @@ Build a **reproducible** ML pipeline to classify **benign vs malignant** tumours
 
 ## Repo structure 
 ```
-bus-bra-classifier/
-├── pyproject.toml
-├── .gitignore
-├── README.md
-├── src/
-│   ├── prepare_data.py
-│   ├── dataset.py
-│   ├── model.py
-│   ├── train.py
-│   └── evaluate.py
+irc-classification-project/
+├── pyproject.toml          # Dependencies + uv config
+├── .gitignore              # Data, checkpoints, envs excluded
+├── README.md               # Setup instructions, usage guide
+├── src/busbra/
+│   ├── train.py            # Training loop with early stopping (empty)
+│   ├── data/
+│   │   ├── prepare_data.py # Load CSVs, create patient-level splits
+│   │   ├── dataset.py      # PyTorch Dataset + dataloaders 
+│   │   ├── splitting.py    # Patient-level splits (leakage prevention) 
+│   │   └── transforms.py   # Albumentations augmentations 
+│   ├── models/
+│   │   └── model.py        # CNN model (empty)
+│   └── evaluation/
+│       └── evaluate.py     # (empty)
 └── data/
     ├── raw/            ← put dataset (BUS-BRA) here
     │   ├── bus_data.csv
@@ -52,7 +57,9 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 ```bash
 uv sync
 ```
-### 4) (Optional) Activate the venv
+
+## Usage
+### 1) Activate the venv
 ```bash 
 # macOS/Linux:
 source .venv/bin/activate
@@ -61,11 +68,11 @@ source .venv/bin/activate
 # .\.venv\Scripts\Activate.ps1
 ```
 
-## Running (soon)
-
-
 ## Team
 Zhuo Jin • Charlie Lam • Harry Reeve • Karolina Zvonickova (Advisor: Jay DesLauriers)
+
+## Reference
+Gómez-Flores et al. (2024). BUS-BRA: A Breast Ultrasound Dataset for Assessing CAD Systems. *Medical Physics*, 51(4), 3110-3123.
 
 ## License
 MIT
