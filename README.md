@@ -20,11 +20,26 @@ Build a **reproducible** ML pipeline to classify **benign vs malignant** tumours
 ## Repo structure (soon)
 
 
-## Install (soon)
+## Setup (soon)
+### 1) Clone repository
 ```bash
-python -m venv .venv
+git clone https://github.com/HarryR8/irc-classification-project.git
+cd irc-classification-project
+```
+### 2) Install uv package & project manager (one-time)
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh  # Install uv
+```
+### 3) Create virtual environment + install dependencies
+```bash
+uv sync
+```
+### 4) (Optional) Activate the venv
+```bash 
+# macOS/Linux:
 source .venv/bin/activate
-pip install -r requirements.txt
+# Windows (PowerShell):
+# .\.venv\Scripts\Activate.ps1
 ```
 
 ## Running (soon)
