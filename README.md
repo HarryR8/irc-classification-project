@@ -7,14 +7,12 @@ Build a **reproducible** ML pipeline to classify **benign vs malignant** tumours
 ## Datasets
   - **BUS-BRA (primary)** - 1875 images / 1064 patients, BI-RADS + tumour delineations. **CC BY 4.0**  
   Links: https://github.com/wgomezf/BUS-BRA | https://zenodo.org/records/8231412  
-- **BUS-UCLM (optional / cross-dataset)** - 683 images / 38 patients, normal/benign/malignant + masks. **CC BY 4.0**  
+- **BUS-UCLM (extension: cross-dataset generalisation)** - 683 images / 38 patients, normal/benign/malignant + masks. **CC BY 4.0**  
   Links: https://github.com/noeliavallez/BUS-UCLM-Dataset
-- **MS MRI lesion segmentation (optional)** - T1/T2/FLAIR + lesion masks (60 patients). **CC BY 4.0**  
-  Link: https://www.kaggle.com/datasets/orvile/multiple-sclerosis-brain-mri-lesion-segmentation
 
 ## Approach (preliminary)
 - Baseline: transfer learning CNN (e.g., ResNet/EfficientNet)
-- Mask-aware option: ROI-cropped classification (ROI-only vs ROI+context)
+- Mask-aware (extension): ROI-cropped classification (ROI-only vs ROI+context)
 - Evaluation: ROC-AUC/PR-AUC/F1 + confusion matrix (focus on malignant recall)
 
 ## Repo structure 
