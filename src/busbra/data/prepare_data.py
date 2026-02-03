@@ -78,14 +78,14 @@ def create_patient_splits(
     df["split"] = df["Case"].map(split_map) #create new column by mapping Case to split using split_map
     assert df["split"].isna().sum() == 0, "Some rows have no split assigned!"   # verify all rows have a split assigned
     
-    # Verify no leakage
+    # Verify no leakage (explicitly)
     for s1, s2 in [("train", "val"), ("train", "test"), ("val", "test")]:
         c1 = set(df[df["split"] == s1]["Case"])
         c2 = set(df[df["split"] == s2]["Case"])
-        assert len(c1 & c2) == 0, f"Leakage between {s1} and {s2}!"
+        assert len(c1 & c2) == 0, f"Leakage between {s1} and {s2}!" #checking for overlap (intersection/union), not element-by-element equality
     print("✓ No patient leakage")
     
-    # Statistics
+    # Statistics (print summary table)
     print("\n--- Split Statistics ---")
     for split in ["train", "val", "test"]:
         split_df = df[df["split"] == split]
@@ -95,12 +95,12 @@ def create_patient_splits(
         malignant = (split_df["label"] == 1).sum()
         print(f"{split:5s}: {n_img:4d} images, {n_pat:3d} patients (benign={benign}, malignant={malignant})")
     
-    # Save
+    # Save splits (splits.csv)
     cols = ["ID", "Case", "Pathology", "label", "BIRADS", "BBOX", "split"]
     df[cols].to_csv(output_dir / "splits.csv", index=False)
     print(f"\nSaved: {output_dir / 'splits.csv'}")
     
-    # Save metadata
+    # Save metadata (split_info.json)
     meta = {
         "seed": seed,
         "n_images": len(df),
