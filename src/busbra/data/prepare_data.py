@@ -65,17 +65,18 @@ def create_patient_splits(
     )
     
     # Assign splits
-    # Convert arrays to sets for faster lookup (O(1) instead of O(n))
-    train_cases, val_cases, test_cases = set(train_cases), set(val_cases), set(test_cases)
-    
-    def get_split(case):
-        if case in test_cases:
-            return "test"
-        elif case in val_cases:
-            return "val"
-        return "train"
-    
-    df["split"] = df["Case"].apply(get_split)
+    """
+    Map from Case to split (better than set, falls back to NaN if missing Case)
+        - apply(get_split) is “procedural”: if not in test or val, default to train.
+	    - map(split_map) is “declarative”: every case has a defined split; missing ones are an error.
+    """
+    # create split map for all cases 
+    split_map = {c: "train" for c in train_cases}
+    split_map.update({c: "val" for c in val_cases}) # add val cases, overwriting any train cases if overlap (which should not happen)
+    split_map.update({c: "test" for c in test_cases})
+
+    df["split"] = df["Case"].map(split_map) #create new column by mapping Case to split using split_map
+    assert df["split"].isna().sum() == 0, "Some rows have no split assigned!"   # verify all rows have a split assigned
     
     # Verify no leakage
     for s1, s2 in [("train", "val"), ("train", "test"), ("val", "test")]:
