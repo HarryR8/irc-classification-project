@@ -1,0 +1,10 @@
+{
+  "seed": 42,
+  "n_images": 1875,
+  "n_patients": 1064,
+  "splits": {
+    "train": 1325,
+    "val": 276,
+    "test": 274
+  }
+}
