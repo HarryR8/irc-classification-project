@@ -10,6 +10,7 @@ BUS-BRA structure:
 
 import json
 from pathlib import Path
+from datetime import datetime, timezone
 
 import pandas as pd
 from sklearn.model_selection import train_test_split
@@ -107,6 +108,7 @@ def create_patient_splits(
     
     # Save metadata (split_info.json)
     meta = {
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "seed": seed,
         "n_images": len(df),
         "n_patients": df["Case"].nunique(),

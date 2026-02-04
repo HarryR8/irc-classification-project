@@ -24,7 +24,7 @@ irc-classification-project/
 ├── src/busbra/
 │   ├── train.py            # Training loop with early stopping (empty)
 │   ├── data/
-│   │   ├── prepare_data.py # Load CSVs, create patient-level splits
+│   │   ├── prepare_data.py # ✅ Load CSVs, create patient-level splits
 │   │   ├── dataset.py      # PyTorch Dataset + dataloaders 
 │   │   ├── splitting.py    # Patient-level splits (leakage prevention) 
 │   │   └── transforms.py   # Albumentations augmentations 
@@ -33,11 +33,14 @@ irc-classification-project/
 │   └── evaluation/
 │       └── evaluate.py     # (empty)
 └── data/
-    ├── raw/            ← put dataset (BUS-BRA) here
+    ├── raw/            ← 🚨 put dataset (BUS-BRA) here
     │   ├── bus_data.csv
     │   ├── bus_0001-l.png
     │   └── ...
-    └── splits/         ← created by prepare_data.py
+    └── splits/         ← ✅ created by prepare_data.py
+        ├── patient_splits.csv  # patient ID + split assignment (for auditing, not used downstream)
+        ├── split_info.json     # split metadata
+        └── splits.csv          # image_path + Case + label (Pathology in binary) + split (primary file used downstream)
 ```
 
 ## Setup 
