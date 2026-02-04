@@ -100,6 +100,11 @@ def create_patient_splits(
     df[cols].to_csv(output_dir / "splits.csv", index=False)
     print(f"\nSaved: {output_dir / 'splits.csv'}")
     
+    # Save patient-level splits (patient_splits.csv)
+    patient_splits = df.groupby("Case")["split"].first().reset_index()
+    patient_splits.to_csv(output_dir / "patient_splits.csv", index=False)
+    print(f"Saved: {output_dir / 'patient_splits.csv'}")
+    
     # Save metadata (split_info.json)
     meta = {
         "seed": seed,

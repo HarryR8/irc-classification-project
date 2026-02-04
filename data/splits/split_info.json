@@ -3,8 +3,8 @@
   "n_images": 1875,
   "n_patients": 1064,
   "splits": {
-    "train": 1325,
-    "val": 276,
+    "train": 1316,
+    "val": 285,
     "test": 274
   }
 }
