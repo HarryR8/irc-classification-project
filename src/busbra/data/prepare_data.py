@@ -106,6 +106,10 @@ def create_patient_splits(
     patient_splits.to_csv(output_dir / "patient_splits.csv", index=False)
     print(f"Saved: {output_dir / 'patient_splits.csv'}")
     
+    # Verify no patient overlap
+    verify_no_leakage = patient_splits.groupby("split")["Case"].nunique()
+    assert verify_no_leakage.sum() == patient_splits["Case"].nunique()
+    
     # Save metadata (split_info.json)
     meta = {
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
