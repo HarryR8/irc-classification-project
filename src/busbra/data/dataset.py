@@ -9,16 +9,23 @@ import torch
 from PIL import Image
 from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 
+"""
+define Dataset class
 
+PyTorch training expects something with: 
+      __len__() = number of samples, 
+      __getitem__(idx) = “give me sample idx"
+"""
 class BUSBRADataset(Dataset):
     """BUS-BRA breast ultrasound dataset."""
     
+    # define constructor
     def __init__(
         self,
-        split_file: str | Path,
-        images_dir: str | Path,
-        split: str,
-        transform: Optional[Callable] = None,
+        split_file: str | Path, # path to splits.csv (contains labels + split assignment)
+        images_dir: str | Path, # path to raw image folder
+        split: str, # one of "train", "val", "test"
+        transform: Optional[Callable] = None,   # always passes `get_transforms(split, size)` at line 91, so transform is never `None` during normal usage. 
     ):
         self.images_dir = Path(images_dir)
         self.transform = transform
