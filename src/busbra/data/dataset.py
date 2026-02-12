@@ -27,10 +27,10 @@ class BUSBRADataset(Dataset):
         split: str, # one of "train", "val", "test"
         transform: Optional[Callable] = None,   # always passes `get_transforms(split, size)` at line 91, so transform is never `None` during normal usage. 
     ):
-        self.images_dir = Path(images_dir)
-        self.transform = transform
+        self.images_dir = Path(images_dir)  # converts string → Path object
+        self.transform = transform  # saved so __getitem__ can call it later
         
-        df = pd.read_csv(split_file)
+        df = pd.read_csv(split_file)    # 
         self.df = df[df["split"] == split].reset_index(drop=True)
         
         if len(self.df) == 0:

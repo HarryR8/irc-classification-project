@@ -1,5 +1,5 @@
 # IRC-Classification-Project (Team 6)
->**Classification of benign/malignant tumours from medical images (breast ultrasound; optional MS MRI).**
+**Classification of benign/malignant tumours from medical images (breast ultrasound).**
 
 ## Goal
 Build a **reproducible** ML pipeline to classify **benign vs malignant** tumours, with honest evaluation (patient-level splits where applicable).
@@ -25,7 +25,7 @@ irc-classification-project/
 │   ├── train.py            # Training loop with early stopping (empty)
 │   ├── data/
 │   │   ├── prepare_data.py # ✅ Load CSVs, create patient-level splits
-│   │   ├── dataset.py      # PyTorch Dataset + dataloaders 
+│   │   ├── dataset.py      # ✅ PyTorch Dataset + dataloaders 
 │   │   ├── splitting.py    # Patient-level splits (leakage prevention) 
 │   │   └── transforms.py   # Albumentations augmentations 
 │   ├── models/
