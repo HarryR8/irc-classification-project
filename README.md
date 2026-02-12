@@ -1,4 +1,4 @@
-# IRC-Classification-Project (Team 6)
+# _SonoNet_ - IRC Classification Project
 **Classification of benign/malignant tumours from medical images (breast ultrasound).**
 
 ## Goal
