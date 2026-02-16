@@ -11,7 +11,7 @@ Build a **reproducible** ML pipeline to classify **benign vs malignant** tumours
   Links: https://github.com/noeliavallez/BUS-UCLM-Dataset
 
 ## Approach (preliminary)
-- Baseline: transfer learning CNN (e.g., ResNet/EfficientNet)
+- Baseline: transfer learning CNN (ResNet18, EfficientNet-B0, DenseNet121)
 - Mask-aware (extension): ROI-cropped classification (ROI-only vs ROI+context)
 - Evaluation: ROC-AUC/PR-AUC/F1 + confusion matrix (focus on malignant recall)
 
