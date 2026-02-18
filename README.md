@@ -84,13 +84,13 @@ for batch in train_loader:
 
 ```bash
 # ImageNet CNN (no HuggingFace download required)
-python scripts/sanity_dataloader.py --model_key imagenet_cnn
+uv run python scripts/sanity_dataloader.py --model_key imagenet_cnn
 
 # CLIP (downloads ~1 GB checkpoint on first run, cached afterward)
-python scripts/sanity_dataloader.py --model_key clip
+uv run python scripts/sanity_dataloader.py --model_key clip
 
 # DINOv2 (downloads ~300 MB checkpoint on first run, cached afterward)
-python scripts/sanity_dataloader.py --model_key dinov2
+uv run python scripts/sanity_dataloader.py --model_key dinov2
 ```
 
 Expected output for each split:
@@ -129,11 +129,11 @@ source .venv/bin/activate
 ```
 ### 2) Prepare data splits
 ```bash
-python -m busbra.data.prepare_data
+uv run python -m busbra.data.prepare_data
 ```
 ### 3) Verify the pipeline
 ```bash
-python scripts/sanity_dataloader.py --model_key imagenet_cnn
+uv run python scripts/sanity_dataloader.py --model_key imagenet_cnn
 ```
 
 ## Team
