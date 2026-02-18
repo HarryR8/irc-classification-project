@@ -1,113 +1,71 @@
-"""PyTorch Dataset for BUS-BRA."""
+"""PyTorch Dataset for BUS-BRA.
+
+Model-agnostic: __getitem__ returns raw PIL.Image + metadata.
+Preprocessing (resize, normalize, augment) is handled externally via
+preprocessing.py so any backbone (ImageNet CNN, CLIP, DINOv2, …) can
+inject its own transform through the collate function.
+"""
 
 from pathlib import Path
-from typing import Callable, Optional
 
-import numpy as np
 import pandas as pd
 import torch
 from PIL import Image
-from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
+from torch.utils.data import Dataset
 
-"""
-define Dataset class
+# define Dataset class
+# PyTorch training expects:
+#   __len__()       = number of samples
+#   __getitem__(idx) = sample at index idx
 
-PyTorch training expects something with: 
-      __len__() = number of samples, 
-      __getitem__(idx) = “give me sample idx"
-"""
+
 class BUSBRADataset(Dataset):
-    """BUS-BRA breast ultrasound dataset."""
-    
-    # define constructor
+    """BUS-BRA breast ultrasound dataset.
+
+    Returns raw PIL.Image objects so that model-specific preprocessing
+    can be applied outside the Dataset (see preprocessing.py).
+    """
+
     def __init__(
         self,
-        split_file: str | Path, # path to splits.csv (contains labels + split assignment)
-        images_dir: str | Path, # path to raw image folder
-        split: str, # one of "train", "val", "test"
-        transform: Optional[Callable] = None,   # always passes `get_transforms(split, size)` at line 91, so transform is never `None` during normal usage. 
+        split_file: str | Path,  # path to splits.csv (ID, Case, label, split, …)
+        images_dir: str | Path,  # directory containing <ID>.png files
+        split: str,              # one of "train", "val", "test"
     ):
-        self.images_dir = Path(images_dir)  # converts string → Path object
-        self.transform = transform  # saved so __getitem__ can call it later
-        
-        df = pd.read_csv(split_file)    # 
+        self.images_dir = Path(images_dir)
+
+        df = pd.read_csv(split_file)
         self.df = df[df["split"] == split].reset_index(drop=True)
-        
+
         if len(self.df) == 0:
             raise ValueError(f"No samples for split '{split}'")
         print(f"Loaded {split}: {len(self.df)} images")
-    
-    def __len__(self):
-        return len(self.df)
-    
-    def __getitem__(self, idx):
-        row = self.df.iloc[idx]
-        
-        # Load grayscale and convert to 3-channel for ImageNet-pretrained models
-        img_path = self.images_dir / f"{row['ID']}.png"
-        image = np.array(Image.open(img_path).convert("RGB"))
 
-        # Apply transforms
-        if self.transform:
-            image = self.transform(image=image)["image"]
-        else:
-            image = torch.from_numpy(image).permute(2, 0, 1).float() / 255.0
-        
+    def __len__(self) -> int:
+        return len(self.df)
+
+    def __getitem__(self, idx: int) -> dict:
+        """Return a single sample.
+
+        Returns
+        -------
+        dict with keys:
+            "image"    : PIL.Image in RGB mode  (no resize/normalize)
+            "label"    : torch.FloatTensor of shape (1,)  — 0 benign, 1 malignant
+            "case"     : str  — patient Case ID
+            "image_id" : str  — image ID (used to build the filename)
+        """
+        row = self.df.iloc[idx]
+
+        # TODO: use an explicit "filename" column from splits.csv if added in
+        #       the future so we aren't hardcoding the f"{ID}.png" convention.
+        img_path = self.images_dir / f"{row['ID']}.png"
+        # Convert to RGB so every backbone receives a 3-channel image
+        image = Image.open(img_path).convert("RGB")
+
         return {
             "image": image,
-            "label": int(row["label"]),
-            "case": row["Case"],
-            "image_id": row["ID"],
+            "label": torch.tensor([int(row["label"])], dtype=torch.float32),
+            "case": str(row["Case"]),
+            "image_id": str(row["ID"]),
         }
-
-
-def get_transforms(split: str, size: int = 224):
-    """Albumentations transforms."""
-    import albumentations as A
-    from albumentations.pytorch import ToTensorV2
-    
-    # letterboxing, black padding - handle input image aspect ratio
-    letterbox = [
-        A.LongestMaxSize(max_size=size),
-        A.PadIfNeeded(min_height=size, min_width=size, border_mode=0, value=0),
-    ]
-
-    if split == "train":
-        return A.Compose([
-            *letterbox,
-            A.HorizontalFlip(p=0.5),
-            A.Rotate(limit=15, border_mode=0, value=0, p=0.5),
-            A.RandomBrightnessContrast(0.1, 0.1, p=0.5),
-            A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-            ToTensorV2(),
-        ])
-    return A.Compose([
-        *letterbox,
-        A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ToTensorV2(),
-    ])
-
-
-def create_dataloaders(split_file, images_dir, batch_size=32, num_workers=4, size=224):
-    """Create train/val/test dataloaders."""
-    datasets = {
-        split: BUSBRADataset(split_file, images_dir, split, get_transforms(split, size))
-        for split in ["train", "val", "test"]
-    }
-
-    # Weighted sampler from training labels only to handle class imbalance
-    train_labels = datasets["train"].df["label"].values
-    class_counts = np.bincount(train_labels)
-    class_weights = 1.0 / class_counts
-    sample_weights = class_weights[train_labels]
-    sampler = WeightedRandomSampler(sample_weights, len(sample_weights))
-
-    loader_kwargs = dict(
-        batch_size=batch_size, num_workers=num_workers, pin_memory=True,
-        persistent_workers=num_workers > 0,
-    )
-    return (
-        DataLoader(datasets["train"], sampler=sampler, drop_last=True, **loader_kwargs),
-        DataLoader(datasets["val"], **loader_kwargs),
-        DataLoader(datasets["test"], **loader_kwargs),
-    )
