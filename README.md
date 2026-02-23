@@ -145,7 +145,7 @@ uv run python scripts/sanity_dataloader.py --model_key imagenet_cnn \
 ```
 
 ## Team
-Zhuo Jin • Charlie Lam • Harry Reeve • Karolina Zvonickova (Advisor: Jay DesLauriers)
+Zhuo Jin • Charlie Lam • Harry Reeve • Karolina Zvonickova (Advisor: James DesLauriers)
 
 ## Reference
 Gómez-Flores et al. (2024). BUS-BRA: A Breast Ultrasound Dataset for Assessing CAD Systems. *Medical Physics*, 51(4), 3110-3123.
