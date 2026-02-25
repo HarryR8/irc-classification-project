@@ -51,7 +51,7 @@ class BUSBRADataset(Dataset):
         -------
         dict with keys:
             "image"    : PIL.Image in RGB mode  (no resize/normalize)
-            "label"    : torch.FloatTensor of shape (1,)  — 0 benign, 1 malignant
+            "label"    : int  — 0 benign, 1 malignant
             "case"     : str  — patient Case ID
             "image_id" : str  — image ID (used to build the filename)
         """
@@ -64,7 +64,7 @@ class BUSBRADataset(Dataset):
         # dataset.py returns PIL.Image (raw, unprocessed) + metadata; preprocessing.py applies model-specific transforms
         return {
             "image": image,
-            "label": torch.tensor([int(row["label"])], dtype=torch.float32),
+            "label": int(row["label"]),
             "case": str(row["Case"]),
             "image_id": str(row["ID"]),
         }

@@ -43,8 +43,8 @@ def create_head(
     head_type: str,
     in_features: int,
     num_classes: int = 2,
-    hidden_dim: int = 256,
-    dropout: float = 0.3,
+    hidden_dim: int = 256,  # Default hidden dimension is a common choice for MLP heads, but can be tuned based on validation performance.
+    dropout: float = 0.3,   # Default dropout is a common choice for MLP heads, but can be tuned based on validation performance.
 ) -> nn.Module:
     """Create a classification head.
 
