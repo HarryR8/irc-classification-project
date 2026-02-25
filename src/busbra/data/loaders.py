@@ -42,6 +42,7 @@ from busbra.data.preprocessing import get_preprocess
 # Collate function factory
 # ---------------------------------------------------------------------------
 
+# Collate function to apply model-specific preprocessing inside DataLoader workers.
 def make_collate_fn(preprocess_fn: Callable) -> Callable:
     """Return a collate function that applies `preprocess_fn` to each sample.
 
@@ -61,6 +62,7 @@ def make_collate_fn(preprocess_fn: Callable) -> Callable:
             "image_id" : list[str]     length B
     """
 
+    # The collate function is called inside the DataLoader worker process, so it can apply the model-specific preprocessing to each PIL image and stack them into a batch tensor.  Metadata like "case" and "image_id" are collected into lists.
     def collate(samples: list[dict]) -> dict:
         # Apply model-specific preprocessing to each PIL image
         images = torch.stack([preprocess_fn(s["image"]) for s in samples])  # (B,3,H,W)
