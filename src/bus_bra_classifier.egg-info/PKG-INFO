@@ -1,3 +1,28 @@
+Metadata-Version: 2.4
+Name: bus-bra-classifier
+Version: 0.1.0
+Summary: Binary classification of breast ultrasound images (BUS-BRA)
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: torch>=2.0.0
+Requires-Dist: torchvision>=0.15.0
+Requires-Dist: timm>=0.9.0
+Requires-Dist: numpy>=1.24.0
+Requires-Dist: pandas>=2.0.0
+Requires-Dist: scikit-learn>=1.3.0
+Requires-Dist: pillow>=10.0.0
+Requires-Dist: matplotlib>=3.7.0
+Requires-Dist: tqdm>=4.65.0
+Requires-Dist: albumentations>=1.3.0
+Requires-Dist: transformers>=5.2.0
+Provides-Extra: dev
+Requires-Dist: jupyter; extra == "dev"
+Requires-Dist: ipykernel; extra == "dev"
+Provides-Extra: clip
+Requires-Dist: open-clip-torch>=2.20.0; extra == "clip"
+Dynamic: license-file
+
 # _SonoNet_ - IRC Classification Project
 **Classification of benign/malignant tumours from medical images (breast ultrasound).**
 
@@ -32,9 +57,7 @@ irc-classification-project/
 │   │   ├── preprocessing.py  # ✅ Backbone-specific preprocessing registry
 │   │   └── loaders.py        # ✅ Collate functions + DataLoader factory
 │   ├── models/
-│   │   ├── factory.py        # ✅ Model registry + create_model / create_backbone
-│   │   ├── heads.py          # ✅ Classification head architectures (linear, mlp, mlp_deep)
-│   │   └── __init__.py       # ✅ Public exports
+│   │   └── model.py        # CNN model (empty)
 │   └── evaluation/
 │       └── evaluate.py     # (empty)
 └── data/
@@ -111,58 +134,6 @@ Expected output for each split:
   ✓ assertions passed
 ```
 
-## Model factory
-
-The model factory (`busbra.models`) provides a consistent interface for creating classifiers, with support for three transfer learning modes.
-
-### Model registry
-
-| Model name | Backbone | `preprocess_key` | Embed dim | Status |
-|---|---|---|---|---|
-| `resnet18` | ResNet-18 | `imagenet_cnn` | 512 | ✅ |
-| `resnet50` | ResNet-50 | `imagenet_cnn` | 2048 | ✅ |
-| `efficientnet_b0` | EfficientNet-B0 | `imagenet_cnn` | 1280 | ✅ |
-| `densenet121` | DenseNet-121 | `imagenet_cnn` | 1024 | ✅ |
-| `dinov2_base` | DINOv2 Base | `dinov2` | 768 | 🔜 planned |
-| `clip_vit_base` | CLIP ViT-B/32 | `clip` | 512 | 🔜 planned |
-
-### Usage modes
-
-```python
-from busbra.models import create_model, create_backbone, get_preprocess_key, count_parameters
-
-# 1. Full fine-tuning — all ~11 M params trainable
-model = create_model("resnet18", num_classes=2, pretrained=True)
-
-# 2. Frozen backbone + custom head — only head params trainable
-model = create_model(
-    "resnet18",
-    freeze_backbone=True,
-    head_type="mlp",        # "linear" | "mlp" | "mlp_deep"
-    head_hidden_dim=256,
-    head_dropout=0.3,
-)
-print(count_parameters(model))
-# {'total': 11308354, 'trainable': 131842, 'frozen': 11176512}
-
-# 3. Backbone only — for pre-computing and caching embeddings
-backbone, embed_dim = create_backbone("resnet18", pretrained=True)
-backbone.eval()
-with torch.no_grad():
-    features = backbone(images)  # (B, 512)
-
-# Link model name → preprocessing key for DataLoader
-preprocess_key = get_preprocess_key("resnet18")  # "imagenet_cnn"
-```
-
-### Classification heads
-
-| `head_type` | Architecture | Trainable params (resnet18 backbone) |
-|---|---|---|
-| `linear` | `Linear(512 → 2)` | 1,026 |
-| `mlp` | `Linear → ReLU → Dropout → Linear` | 131,842 |
-| `mlp_deep` | `Linear → ReLU → Dropout → Linear → ReLU → Dropout → Linear` | 164,482 |
-
 ## Setup
 ### 1) Clone repository
 ```bash
@@ -199,7 +170,7 @@ uv run python scripts/sanity_dataloader.py --model_key imagenet_cnn \
 ```
 
 ## Team
-Zhuo Jin • Charlie Lam • Harry Reeve • Karolina Zvonickova (Advisor: James DesLauriers)
+Zhuo Jin • Charlie Lam • Harry Reeve • Karolina Zvonickova (Advisor: Jay DesLauriers)
 
 ## Reference
 Gómez-Flores et al. (2024). BUS-BRA: A Breast Ultrasound Dataset for Assessing CAD Systems. *Medical Physics*, 51(4), 3110-3123.

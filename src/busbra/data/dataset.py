@@ -57,12 +57,11 @@ class BUSBRADataset(Dataset):
         """
         row = self.df.iloc[idx]
 
-        # TODO: use an explicit "filename" column from splits.csv if added in
-        #       the future so we aren't hardcoding the f"{ID}.png" convention.
-        img_path = self.images_dir / f"{row['ID']}.png"
+        img_path = self.images_dir / row["filename"]
         # Convert to RGB so every backbone receives a 3-channel image
         image = Image.open(img_path).convert("RGB")
 
+        # dataset.py returns PIL.Image (raw, unprocessed) + metadata; preprocessing.py applies model-specific transforms
         return {
             "image": image,
             "label": torch.tensor([int(row["label"])], dtype=torch.float32),
