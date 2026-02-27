@@ -68,15 +68,17 @@ MODEL_REGISTRY: dict[str, dict] = {
         "embedding_dim": 1024,
         "preprocess_key": "imagenet_cnn",
     },
-    # --- Future: DINOv2 ---------------------------------------------------
+    # --- DINOv2 -----------------------------------------------------------
     "dinov2_base": {
         "type": "dinov2",
+        "hub_name": "dinov2_vitb14",
         "embedding_dim": 768,
         "preprocess_key": "dinov2",
     },
-    # --- Future: CLIP ViT -------------------------------------------------
+    # --- CLIP ViT ---------------------------------------------------------
     "clip_vit_base": {
         "type": "clip",
+        "clip_name": "ViT-B-32",
         "embedding_dim": 512,
         "preprocess_key": "clip",
     },
@@ -236,14 +238,19 @@ def create_model(
         else:
             return _create_timm_classifier(config, num_classes=num_classes, pretrained=pretrained)
 
-    elif model_type == "dinov2":
-        raise NotImplementedError(
-            f"DINOv2 models not yet implemented: '{model_name}'"
+    elif model_type in ("dinov2", "clip"):
+        if model_type == "dinov2":
+            backbone, embed_dim = _create_dinov2_backbone(config, pretrained=pretrained)
+        else:
+            backbone, embed_dim = _create_clip_backbone(config, pretrained=pretrained)
+        head = _create_head(
+            head_type,
+            in_features=embed_dim,
+            num_classes=num_classes,
+            hidden_dim=head_hidden_dim,
+            dropout=head_dropout,
         )
-    elif model_type == "clip":
-        raise NotImplementedError(
-            f"CLIP models not yet implemented: '{model_name}'"
-        )
+        return BackboneWithHead(backbone, head, freeze_backbone=freeze_backbone)
     else:
         raise NotImplementedError(
             f"Unknown model type '{model_type}' for model '{model_name}'"
@@ -290,13 +297,9 @@ def create_backbone(
     if model_type == "timm":
         return _create_timm_backbone(config, pretrained=pretrained)
     elif model_type == "dinov2":
-        raise NotImplementedError(
-            f"DINOv2 models not yet implemented: '{model_name}'"
-        )
+        return _create_dinov2_backbone(config, pretrained=pretrained)
     elif model_type == "clip":
-        raise NotImplementedError(
-            f"CLIP models not yet implemented: '{model_name}'"
-        )
+        return _create_clip_backbone(config, pretrained=pretrained)
     else:
         raise NotImplementedError(
             f"Unknown model type '{model_type}' for model '{model_name}'"

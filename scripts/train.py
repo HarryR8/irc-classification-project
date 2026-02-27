@@ -91,7 +91,7 @@ def main():
         args.model,
         num_classes=2,
         pretrained=True,
-        freeze_backbone=args.freeze_backbone,
+        freeze_backbone=args.freeze_backbone, #args.freeze_backbone is True or False depending on whether you passed --freeze_backbone in the terminal.
         head_type=args.head_type if args.freeze_backbone else "linear",
     )
     model = model.to(device)
@@ -102,7 +102,7 @@ def main():
 
     # ── Loss, optimiser, scheduler ─────────────────────────────────────────────
     # Class weights: upweight malignant (minority class)
-    class_weights = torch.tensor([0.32, 0.68], dtype=torch.float32).to(device)
+    class_weights = torch.tensor([0.32, 0.68], dtype=torch.float32).to(device) #The weights [0.32, 0.68] mean malignant mistakes are penalised more heavily than benign mistakes 
     criterion = nn.CrossEntropyLoss(weight=class_weights)
 
     optimizer = torch.optim.AdamW(
