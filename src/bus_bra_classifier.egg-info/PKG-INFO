@@ -19,6 +19,8 @@ Requires-Dist: transformers>=5.2.0
 Provides-Extra: dev
 Requires-Dist: jupyter; extra == "dev"
 Requires-Dist: ipykernel; extra == "dev"
+Provides-Extra: clip
+Requires-Dist: open-clip-torch>=2.20.0; extra == "clip"
 Dynamic: license-file
 
 # _SonoNet_ - IRC Classification Project
@@ -168,7 +170,7 @@ uv run python scripts/sanity_dataloader.py --model_key imagenet_cnn \
 ```
 
 ## Team
-Zhuo Jin • Charlie Lam • Harry Reeve • Karolina Zvonickova (Advisor: James DesLauriers)
+Zhuo Jin • Charlie Lam • Harry Reeve • Karolina Zvonickova (Advisor: Jay DesLauriers)
 
 ## Reference
 Gómez-Flores et al. (2024). BUS-BRA: A Breast Ultrasound Dataset for Assessing CAD Systems. *Medical Physics*, 51(4), 3110-3123.

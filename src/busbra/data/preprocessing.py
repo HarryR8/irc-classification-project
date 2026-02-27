@@ -27,7 +27,7 @@ import torch
 from PIL import Image
 
 # ---------------------------------------------------------------------------
-# Helper: PIL → numpy (uint8 HWC) for Albumentations
+# Helper: PIL → numpy (uint8 HWC) for Albumentations (expects numpy input)
 # ---------------------------------------------------------------------------
 
 def _pil_to_numpy(img: Image.Image) -> np.ndarray:
@@ -36,7 +36,7 @@ def _pil_to_numpy(img: Image.Image) -> np.ndarray:
 
 
 # ---------------------------------------------------------------------------
-# imagenet_cnn: Albumentations letterbox + ImageNet normalisation
+# imagenet_cnn: Albumentations letterbox + ImageNet normalisation 
 # ---------------------------------------------------------------------------
 
 def _make_imagenet_cnn_preprocess(split: str, size: int) -> Callable:
@@ -54,11 +54,13 @@ def _make_imagenet_cnn_preprocess(split: str, size: int) -> Callable:
         A.PadIfNeeded(min_height=size, min_width=size, border_mode=0, value=0),
     ]
 
+    # Normalisation for ImageNet pre-trained CNNs (e.g. ResNet50), expects input in [0, 1] range (Albumentations handles this internally when using ToTensorV2)
     normalize = A.Normalize(
         mean=[0.485, 0.456, 0.406],
         std=[0.229, 0.224, 0.225],
     )
 
+    # Augmentations applied to `train` split (flip, rotate, brightness/contrast) to artificially increase data diversity and reduce overfitting.
     if split == "train":
         pipeline = A.Compose([
             *letterbox,
@@ -68,6 +70,7 @@ def _make_imagenet_cnn_preprocess(split: str, size: int) -> Callable:
             normalize,
             ToTensorV2(),
         ])
+    # No augmentations to `val` and `test` splits— just resize and normalize. Want deterministic, consistent evaluation.
     else:
         pipeline = A.Compose([
             *letterbox,

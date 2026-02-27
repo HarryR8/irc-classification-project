@@ -32,7 +32,9 @@ irc-classification-project/
 │   │   ├── preprocessing.py  # ✅ Backbone-specific preprocessing registry
 │   │   └── loaders.py        # ✅ Collate functions + DataLoader factory
 │   ├── models/
-│   │   └── model.py        # CNN model (empty)
+│   │   ├── factory.py        # ✅ Model registry + create_model / create_backbone
+│   │   ├── heads.py          # ✅ Classification head architectures (linear, mlp, mlp_deep)
+│   │   └── __init__.py       # ✅ Public exports
 │   └── evaluation/
 │       └── evaluate.py     # (empty)
 └── data/
@@ -108,6 +110,58 @@ Expected output for each split:
   id     type=list  len=4   example='bus_0042-l'
   ✓ assertions passed
 ```
+
+## Model factory
+
+The model factory (`busbra.models`) provides a consistent interface for creating classifiers, with support for three transfer learning modes.
+
+### Model registry
+
+| Model name | Backbone | `preprocess_key` | Embed dim | Status |
+|---|---|---|---|---|
+| `resnet18` | ResNet-18 | `imagenet_cnn` | 512 | ✅ |
+| `resnet50` | ResNet-50 | `imagenet_cnn` | 2048 | ✅ |
+| `efficientnet_b0` | EfficientNet-B0 | `imagenet_cnn` | 1280 | ✅ |
+| `densenet121` | DenseNet-121 | `imagenet_cnn` | 1024 | ✅ |
+| `dinov2_base` | DINOv2 Base | `dinov2` | 768 | 🔜 planned |
+| `clip_vit_base` | CLIP ViT-B/32 | `clip` | 512 | 🔜 planned |
+
+### Usage modes
+
+```python
+from busbra.models import create_model, create_backbone, get_preprocess_key, count_parameters
+
+# 1. Full fine-tuning — all ~11 M params trainable
+model = create_model("resnet18", num_classes=2, pretrained=True)
+
+# 2. Frozen backbone + custom head — only head params trainable
+model = create_model(
+    "resnet18",
+    freeze_backbone=True,
+    head_type="mlp",        # "linear" | "mlp" | "mlp_deep"
+    head_hidden_dim=256,
+    head_dropout=0.3,
+)
+print(count_parameters(model))
+# {'total': 11308354, 'trainable': 131842, 'frozen': 11176512}
+
+# 3. Backbone only — for pre-computing and caching embeddings
+backbone, embed_dim = create_backbone("resnet18", pretrained=True)
+backbone.eval()
+with torch.no_grad():
+    features = backbone(images)  # (B, 512)
+
+# Link model name → preprocessing key for DataLoader
+preprocess_key = get_preprocess_key("resnet18")  # "imagenet_cnn"
+```
+
+### Classification heads
+
+| `head_type` | Architecture | Trainable params (resnet18 backbone) |
+|---|---|---|
+| `linear` | `Linear(512 → 2)` | 1,026 |
+| `mlp` | `Linear → ReLU → Dropout → Linear` | 131,842 |
+| `mlp_deep` | `Linear → ReLU → Dropout → Linear → ReLU → Dropout → Linear` | 164,482 |
 
 ## Setup
 ### 1) Clone repository

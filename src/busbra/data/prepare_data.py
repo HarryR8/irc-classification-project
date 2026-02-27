@@ -97,12 +97,13 @@ def create_patient_splits(
         print(f"{split:5s}: {n_img:4d} images, {n_pat:3d} patients (benign={benign}, malignant={malignant})")
     
     # Save splits (splits.csv)
-    cols = ["ID", "Case", "Pathology", "label", "BIRADS", "BBOX", "split"]
+    df["filename"] = df["ID"].astype(str) + ".png"
+    cols = ["ID", "Case", "Pathology", "label", "BIRADS", "BBOX", "split", "filename"]
     df[cols].to_csv(output_dir / "splits.csv", index=False)
     print(f"\nSaved: {output_dir / 'splits.csv'}")
     
     # Save patient-level splits (patient_splits.csv)
-    patient_splits = df.groupby("Case")["split"].first().reset_index()
+    patient_splits = df.groupby("Case")[["label", "split"]].first().reset_index()
     patient_splits.to_csv(output_dir / "patient_splits.csv", index=False)
     print(f"Saved: {output_dir / 'patient_splits.csv'}")
     
@@ -127,9 +128,9 @@ def create_patient_splits(
 def verify_images(df: pd.DataFrame, data_dir: Path):
     """Check images exist."""
     missing = []
-    for img_id in df["ID"]:
-        if not (data_dir / f"{img_id}.png").exists():
-            missing.append(img_id)
+    for _, row in df[["ID", "filename"]].iterrows():
+        if not (data_dir / row["filename"]).exists():
+            missing.append(row["ID"])
     
     if missing:
         print(f"⚠ Missing {len(missing)} images")
