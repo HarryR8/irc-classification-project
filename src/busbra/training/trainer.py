@@ -32,7 +32,7 @@ def train_one_epoch(
 
         optimizer.zero_grad() #Clear any leftover gradients from the previous batch
         logits = model(images) #raw scores straight out of the network (two numbers per image, one for benign, one for malignant)
-        loss = criterion(logits, labels.squeeze(1).long()) #loss function defined in scripts/train.py, logits==predictions, label==correct ans
+        loss = criterion(logits, labels.long()) #loss function defined in scripts/train.py, logits==predictions, label==correct ans
         loss.backward() #Backpropagation, if the backbone is frozen, it only goes backwards through the head layers
         #if not frozen, goes through all layers
         optimizer.step() #updates the weights using what backpropagation just calculated
@@ -41,7 +41,7 @@ def train_one_epoch(
 
         probs = torch.softmax(logits, dim=1)[:, 1].detach().cpu().numpy()
         all_probs.append(probs)
-        all_labels.append(labels.squeeze(1).cpu().numpy())
+        all_labels.append(labels.cpu().numpy())
 
     all_labels = np.concatenate(all_labels)
     all_probs = np.concatenate(all_probs)
@@ -87,13 +87,13 @@ def evaluate(
             labels = batch["label"].to(device)
 
             logits = model(images)
-            loss = criterion(logits, labels.squeeze(1).long())
+            loss = criterion(logits, labels.long())
 
             total_loss += loss.item() * images.size(0)
 
             probs = torch.softmax(logits, dim=1)[:, 1].cpu().numpy()
             all_probs.append(probs)
-            all_labels.append(labels.squeeze(1).cpu().numpy())
+            all_labels.append(labels.cpu().numpy())
             all_image_ids.extend(batch["image_id"])
 
     all_labels = np.concatenate(all_labels)
