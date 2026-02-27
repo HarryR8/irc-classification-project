@@ -3,6 +3,12 @@ __pycache__/
 *.py[cod]
 .venv/
 
+# Build artifacts (setuptools/pip)
+*.egg-info/
+dist/
+build/
+*.egg
+
 # Data (download separately)
 data/raw/
 *.pt
