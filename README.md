@@ -23,9 +23,9 @@ irc-classification-project/
 ├── .gitignore              # Data, checkpoints, envs excluded
 ├── README.md               # Setup instructions, usage guide
 ├── scripts/
+│   ├── train.py              # ✅ CLI training entrypoint (model, epochs, lr, etc.)
 │   └── sanity_dataloader.py  # ✅ Verify batch shapes/dtypes for any backbone
 ├── src/busbra/
-│   ├── train.py            # Training loop with early stopping (empty)
 │   ├── data/
 │   │   ├── prepare_data.py   # ✅ Load CSVs, create patient-level splits
 │   │   ├── dataset.py        # ✅ Model-agnostic PyTorch Dataset (returns PIL.Image)
@@ -35,8 +35,9 @@ irc-classification-project/
 │   │   ├── factory.py        # ✅ Model registry + create_model / create_backbone
 │   │   ├── heads.py          # ✅ Classification head architectures (linear, mlp, mlp_deep)
 │   │   └── __init__.py       # ✅ Public exports
-│   └── evaluation/
-│       └── evaluate.py     # (empty)
+│   └── training/
+│       ├── trainer.py        # ✅ train_one_epoch + evaluate functions
+│       └── __init__.py       # ✅ Public exports
 └── data/
     ├── raw/            ← 🚨 put dataset (BUS-BRA) here
     │   ├── bus_data.csv
@@ -45,7 +46,7 @@ irc-classification-project/
     └── splits/         ← ✅ created by prepare_data.py
         ├── patient_splits.csv  # patient ID + split assignment (for auditing)
         ├── split_info.json     # split metadata
-        └── splits.csv          # ID + Case + label + split (primary file used downstream)
+        └── splits.csv          # ID + Case + label + filename + split
 ```
 
 ## Data pipeline
@@ -196,6 +197,10 @@ uv run python -m busbra.data.prepare_data
 uv run python scripts/sanity_dataloader.py --model_key imagenet_cnn \
   --split_file data/splits/splits.csv \
   --images_dir data/raw
+```
+### 4) Train a model
+```bash
+uv run python scripts/train.py --model resnet18 --epochs 30 --batch_size 32 --lr 1e-4
 ```
 
 ## Team
