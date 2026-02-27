@@ -20,7 +20,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["jupyter", "ipykernel"]
+dev = ["jupyter", "ipykernel", "pytest>=7.0.0", "pytest-cov>=4.0.0"]
 clip = ["open-clip-torch>=2.20.0"]
 
 [build-system]
