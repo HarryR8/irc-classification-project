@@ -43,7 +43,7 @@ def parse_args():
                         help="Batch size for all dataloaders")
     parser.add_argument("--lr", type=float, default=1e-4,
                         help="Learning rate for AdamW")
-    parser.add_argument("--weight_decay", type=float, default=1e-5,
+    parser.add_argument("--weight_decay", type=float, default=1e-4,
                         help="Weight decay for AdamW")
     parser.add_argument("--freeze_backbone", action="store_true",
                         help="Freeze backbone weights (only train head)")
@@ -56,6 +56,8 @@ def parse_args():
                         help="Random seed for reproducibility")
     parser.add_argument("--num_workers", type=int, default=4,
                         help="Number of DataLoader worker processes")
+    parser.add_argument("--dropout", type=float, default=0.3,
+                        help="Dropout rate for MLP head layers")
     parser.add_argument("--split_file", type=str, default="data/splits/splits.csv",
                         help="Path to splits CSV file")
     parser.add_argument("--images_dir", type=str, default="data/raw",
@@ -97,6 +99,7 @@ def main():
         pretrained=True,
         freeze_backbone=args.freeze_backbone, #args.freeze_backbone is True or False depending on whether you passed --freeze_backbone in the terminal.
         head_type=args.head_type if args.freeze_backbone else "linear",
+        head_dropout=args.dropout,
     )
     model = model.to(device)
 

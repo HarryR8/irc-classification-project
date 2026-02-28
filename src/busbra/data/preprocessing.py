@@ -65,8 +65,12 @@ def _make_imagenet_cnn_preprocess(split: str, size: int) -> Callable:
         pipeline = A.Compose([
             *letterbox,
             A.HorizontalFlip(p=0.5),
-            A.Rotate(limit=15, border_mode=0, fill=0, p=0.5),
+            A.VerticalFlip(p=0.5),
+            A.Rotate(limit=30, border_mode=0, fill=0, p=0.5),
             A.RandomBrightnessContrast(0.1, 0.1, p=0.5),
+            A.GaussianBlur(blur_limit=(3, 7), p=0.3),
+            A.ElasticTransform(alpha=50, sigma=5, p=0.3),
+            A.GridDistortion(num_steps=5, distort_limit=0.3, p=0.2),
             normalize,
             ToTensorV2(),
         ])
