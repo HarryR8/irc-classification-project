@@ -20,6 +20,8 @@ Supported model_keys
 
 from __future__ import annotations
 
+import warnings
+from pathlib import Path
 from typing import Callable
 
 import numpy as np
@@ -36,7 +38,59 @@ def _pil_to_numpy(img: Image.Image) -> np.ndarray:
 
 
 # ---------------------------------------------------------------------------
-# imagenet_cnn: Albumentations letterbox + ImageNet normalisation 
+# Lesion cropping: load image + mask and crop to the lesion bounding box
+# ---------------------------------------------------------------------------
+
+def load_and_crop_to_lesion(
+    image_path: str | Path,
+    mask_path: str | Path,
+    padding: int = 20,
+) -> np.ndarray:
+    """Load an image and crop it to the lesion bounding box from its mask.
+
+    Parameters
+    ----------
+    image_path : str or Path
+        Path to the RGB ultrasound image.
+    mask_path : str or Path
+        Path to the binary segmentation mask (white lesion on black background).
+    padding : int
+        Pixels to expand the bounding box on each side, clamped to image bounds.
+
+    Returns
+    -------
+    np.ndarray
+        Cropped image as (H, W, 3) uint8 array.  If no white pixels are found
+        in the mask, the full image is returned unchanged and a warning is logged.
+    """
+    image = np.array(Image.open(image_path).convert("RGB"), dtype=np.uint8)
+    mask  = np.array(Image.open(mask_path).convert("L"),   dtype=np.uint8)
+
+    binary = mask >= 127
+    rows = np.any(binary, axis=1)
+    cols = np.any(binary, axis=0)
+
+    if not rows.any():
+        warnings.warn(
+            f"No lesion pixels found in mask '{mask_path}'; returning full image.",
+            stacklevel=2,
+        )
+        return image
+
+    h, w = image.shape[:2]
+    y_min, y_max = int(np.where(rows)[0][0]),  int(np.where(rows)[0][-1])
+    x_min, x_max = int(np.where(cols)[0][0]),  int(np.where(cols)[0][-1])
+
+    y_min = max(0, y_min - padding)
+    y_max = min(h - 1, y_max + padding)
+    x_min = max(0, x_min - padding)
+    x_max = min(w - 1, x_max + padding)
+
+    return image[y_min : y_max + 1, x_min : x_max + 1]
+
+
+# ---------------------------------------------------------------------------
+# imagenet_cnn: Albumentations letterbox + ImageNet normalisation
 # ---------------------------------------------------------------------------
 
 def _make_imagenet_cnn_preprocess(split: str, size: int) -> Callable:

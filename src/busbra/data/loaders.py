@@ -91,6 +91,7 @@ def create_dataloaders(
     batch_size: int = 32,
     num_workers: int = 4,
     size: int = 224,
+    masks_dir: str | None = None,
 ) -> tuple[DataLoader, DataLoader, DataLoader]:
     """Create train / val / test DataLoaders.
 
@@ -109,6 +110,10 @@ def create_dataloaders(
         DataLoader worker processes.
     size : int
         Target image size (used by imagenet_cnn pipeline).
+    masks_dir : str or None
+        Optional directory containing mask_*.png segmentation masks.  When
+        provided, each image is cropped to its lesion bounding box before
+        the resize/normalise pipeline runs.
 
     Returns
     -------
@@ -121,7 +126,7 @@ def create_dataloaders(
 
     # Datasets return raw PIL.Image; no transform stored inside Dataset
     datasets = {
-        split: BUSBRADataset(split_file, images_dir, split)
+        split: BUSBRADataset(split_file, images_dir, split, masks_dir=masks_dir)
         for split in ["train", "val", "test"]
     }
 

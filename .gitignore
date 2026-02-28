@@ -11,6 +11,7 @@ build/
 
 # Data (download separately)
 data/raw/
+data/masks/
 *.pt
 *.pth
 checkpoints/

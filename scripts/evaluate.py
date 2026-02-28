@@ -34,6 +34,9 @@ def parse_args():
                         help="Directory containing image files")
     parser.add_argument("--split_file", type=str, default="data/splits/splits.csv",
                         help="Path to splits CSV file")
+    parser.add_argument("--masks_dir", type=str, default=None,
+                        help="Directory containing mask_*.png segmentation masks "
+                             "(enables lesion-crop preprocessing)")
     return parser.parse_args()
 
 
@@ -61,6 +64,7 @@ def main():
         model_key=preprocess_key,
         batch_size=config.get("batch_size", 32),
         num_workers=config.get("num_workers", 4),
+        masks_dir=args.masks_dir,
     )
     loader = val_loader if args.split == "val" else test_loader
 

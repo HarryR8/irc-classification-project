@@ -13,6 +13,8 @@ import torch
 from PIL import Image
 from torch.utils.data import Dataset
 
+from busbra.data.preprocessing import load_and_crop_to_lesion
+
 # define Dataset class
 # PyTorch training expects:
 #   __len__()       = number of samples
@@ -28,11 +30,13 @@ class BUSBRADataset(Dataset):
 
     def __init__(
         self,
-        split_file: str | Path,  # path to splits.csv (ID, Case, label, split, …)
-        images_dir: str | Path,  # directory containing <ID>.png files
-        split: str,              # one of "train", "val", "test"
+        split_file: str | Path,          # path to splits.csv (ID, Case, label, split, …)
+        images_dir: str | Path,          # directory containing <ID>.png files
+        split: str,                      # one of "train", "val", "test"
+        masks_dir: str | Path | None = None,  # optional: directory of mask_*.png files
     ):
         self.images_dir = Path(images_dir)
+        self.masks_dir  = Path(masks_dir) if masks_dir is not None else None
 
         df = pd.read_csv(split_file)
         self.df = df[df["split"] == split].reset_index(drop=True)
@@ -58,8 +62,16 @@ class BUSBRADataset(Dataset):
         row = self.df.iloc[idx]
 
         img_path = self.images_dir / row["filename"]
-        # Convert to RGB so every backbone receives a 3-channel image
-        image = Image.open(img_path).convert("RGB")
+
+        if self.masks_dir is not None:
+            # Derive mask filename: bus_0001-l.png → mask_0001-l.png
+            mask_filename = row["filename"].replace("bus_", "mask_", 1)
+            mask_path = self.masks_dir / mask_filename
+            arr = load_and_crop_to_lesion(img_path, mask_path)
+            image = Image.fromarray(arr)
+        else:
+            # Convert to RGB so every backbone receives a 3-channel image
+            image = Image.open(img_path).convert("RGB")
 
         # dataset.py returns PIL.Image (raw, unprocessed) + metadata; preprocessing.py applies model-specific transforms
         return {
