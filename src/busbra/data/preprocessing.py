@@ -51,7 +51,7 @@ def _make_imagenet_cnn_preprocess(split: str, size: int) -> Callable:
     # Letterbox: scale longest side to `size`, pad remainder with black
     letterbox = [
         A.LongestMaxSize(max_size=size),
-        A.PadIfNeeded(min_height=size, min_width=size, border_mode=0, value=0),
+        A.PadIfNeeded(min_height=size, min_width=size, border_mode=0, fill=0),
     ]
 
     # Normalisation for ImageNet pre-trained CNNs (e.g. ResNet50), expects input in [0, 1] range (Albumentations handles this internally when using ToTensorV2)
@@ -65,7 +65,7 @@ def _make_imagenet_cnn_preprocess(split: str, size: int) -> Callable:
         pipeline = A.Compose([
             *letterbox,
             A.HorizontalFlip(p=0.5),
-            A.Rotate(limit=15, border_mode=0, value=0, p=0.5),
+            A.Rotate(limit=15, border_mode=0, fill=0, p=0.5),
             A.RandomBrightnessContrast(0.1, 0.1, p=0.5),
             normalize,
             ToTensorV2(),
