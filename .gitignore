@@ -15,6 +15,7 @@ data/masks/
 *.pt
 *.pth
 checkpoints/
+runs/
 
 # Keep splits
 !data/splits/
