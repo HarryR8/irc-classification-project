@@ -24,6 +24,7 @@ irc-classification-project/
 ├── README.md               # Setup instructions, usage guide
 ├── scripts/
 │   ├── train.py              # ✅ CLI training entrypoint (model, epochs, lr, etc.)
+│   ├── evaluate.py           # ✅ Evaluate a checkpoint (AUC, accuracy, sensitivity, specificity)
 │   └── sanity_dataloader.py  # ✅ Verify batch shapes/dtypes for any backbone
 ├── src/busbra/
 │   ├── data/
@@ -57,7 +58,7 @@ The data pipeline is **model-agnostic**: the `BUSBRADataset` returns raw `PIL.Im
 
 | `model_key` | Backbone | Preprocessing | Train augmentation |
 |---|---|---|---|
-| `imagenet_cnn` | ResNet18, EfficientNet-B0, DenseNet121 | Letterbox → ImageNet norm | Flip, rotate ±15°, brightness |
+| `imagenet_cnn` | ResNet18, EfficientNet-B0, DenseNet121 | Letterbox → ImageNet norm | H/V flip, rotate ±30°, brightness/contrast, Gaussian blur, elastic & grid distortion |
 | `clip` | CLIP ViT (`openai/clip-vit-base-patch32`) | HuggingFace `CLIPProcessor` | Horizontal flip |
 | `dinov2` | DINOv2 Base (`facebook/dinov2-base`) | HuggingFace `AutoImageProcessor` | None |
 | `dinov3` | DINOv2 Large (`facebook/dinov2-large`) | HuggingFace `AutoImageProcessor` | None |
@@ -78,7 +79,7 @@ train_loader, val_loader, test_loader = create_dataloaders(
 
 for batch in train_loader:
     images = batch["image"]     # (B, 3, H, W) float32
-    labels = batch["label"]     # (B, 1)       float32
+    labels = batch["label"]     # (B,)          int64
     cases  = batch["case"]      # list[str] — patient IDs
     ids    = batch["image_id"]  # list[str] — image filenames
 ```
@@ -124,8 +125,8 @@ The model factory (`busbra.models`) provides a consistent interface for creating
 | `resnet50` | ResNet-50 | `imagenet_cnn` | 2048 | ✅ |
 | `efficientnet_b0` | EfficientNet-B0 | `imagenet_cnn` | 1280 | ✅ |
 | `densenet121` | DenseNet-121 | `imagenet_cnn` | 1024 | ✅ |
-| `dinov2_base` | DINOv2 Base | `dinov2` | 768 | 🔜 planned |
-| `clip_vit_base` | CLIP ViT-B/32 | `clip` | 512 | 🔜 planned |
+| `dinov2_base` | DINOv2 Base | `dinov2` | 768 | ✅ |
+| `clip_vit_base` | CLIP ViT-B/32 | `clip` | 512 | ✅ |
 
 ### Usage modes
 
@@ -202,6 +203,27 @@ uv run python scripts/sanity_dataloader.py --model_key imagenet_cnn \
 ```bash
 uv run python scripts/train.py --model resnet18 --epochs 30 --batch_size 32 --lr 1e-4
 ```
+
+Key CLI arguments for `train.py`:
+
+| Argument | Default | Description |
+|---|---|---|
+| `--model` | `resnet18` | Model name (see registry table) |
+| `--epochs` | 30 | Number of training epochs |
+| `--lr` | `1e-4` | Learning rate |
+| `--weight_decay` | `1e-4` | L2 regularisation |
+| `--dropout` | `0.3` | Dropout rate for MLP head |
+| `--freeze_backbone` | off | Freeze backbone weights, train head only |
+| `--head_type` | `linear` | Head architecture (`linear`, `mlp`, `mlp_deep`) |
+| `--split_file` | `data/splits/splits.csv` | Path to splits CSV |
+| `--images_dir` | `data/raw` | Directory containing image files |
+
+### 5) Evaluate a trained model
+```bash
+uv run python scripts/evaluate.py --run_dir runs/<model>_<timestamp>
+```
+
+By default this evaluates on the **test** split. Pass `--split val` to evaluate on the validation split instead. Results (AUC, accuracy, sensitivity, specificity) are printed to stdout and saved to `eval_test.json` (or `eval_val.json`) inside the run directory.
 
 ## Team
 Zhuo Jin • Charlie Lam • Harry Reeve • Karolina Zvonickova (Advisor: James DesLauriers)
