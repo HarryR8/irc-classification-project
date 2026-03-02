@@ -38,7 +38,7 @@ def check_batch(batch: dict, split: str) -> None:
 
     # Assertions
     B = img.shape[0]
-    assert label.shape == (B, 1),          f"label shape mismatch: {label.shape}"
+    assert label.shape == (B,),            f"label shape mismatch: {label.shape}"
     assert len(cases) == B,                f"case list length mismatch: {len(cases)}"
     assert len(ids)   == B,                f"image_id list length mismatch: {len(ids)}"
     assert img.is_floating_point(), "image tensor must be float"

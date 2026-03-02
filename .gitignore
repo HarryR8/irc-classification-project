@@ -3,11 +3,19 @@ __pycache__/
 *.py[cod]
 .venv/
 
+# Build artifacts (setuptools/pip)
+*.egg-info/
+dist/
+build/
+*.egg
+
 # Data (download separately)
 data/raw/
+data/masks/
 *.pt
 *.pth
 checkpoints/
+runs/
 
 # Keep splits
 !data/splits/
@@ -16,3 +24,4 @@ checkpoints/
 .idea/
 .vscode/
 .DS_Store
+.claude/
