@@ -2,8 +2,9 @@
 CLI entrypoint for training the BUS-BRA breast ultrasound classifier.
 
 Example usage:
-    python scripts/train.py --model resnet18 --epochs 30 --batch_size 32 --lr 1e-4
-    python scripts/train.py --model resnet18 --freeze_backbone --head_type mlp --epochs 2
+    python scripts/train.py --model resnet18 --epochs 30 --batch_size 32
+    python scripts/train.py --model dinov2_base --epochs 30
+    python scripts/train.py --model resnet18 --lr 5e-5 --epochs 30  # override default lr
 """
 
 import argparse
@@ -21,13 +22,53 @@ from busbra.models import create_model, get_preprocess_key, count_parameters
 from busbra.training import train_one_epoch, evaluate
 
 
+# ── Per-model recommended training settings ────────────────────────────────────
+# CLI arguments always override these when explicitly provided.
+MODEL_TRAINING_CONFIGS = {
+    "resnet18":        {"lr": 1e-4, "weight_decay": 1e-5, "warmup_epochs": 0, "freeze_backbone": False},
+    "resnet50":        {"lr": 1e-4, "weight_decay": 1e-5, "warmup_epochs": 0, "freeze_backbone": False},
+    "efficientnet_b0": {"lr": 1e-4, "weight_decay": 1e-5, "warmup_epochs": 0, "freeze_backbone": False},
+    "densenet121":     {"lr": 1e-4, "weight_decay": 1e-5, "warmup_epochs": 0, "freeze_backbone": False},
+    "dinov2_base":     {"lr": 1e-5, "weight_decay": 1e-2, "warmup_epochs": 5, "freeze_backbone": True},
+    "clip_vit_base":   {"lr": 1e-5, "weight_decay": 1e-2, "warmup_epochs": 5, "freeze_backbone": True},
+}
+_DEFAULT_CONFIG = {"lr": 1e-4, "weight_decay": 1e-5, "warmup_epochs": 0, "freeze_backbone": False}
+
+
+def resolve_config(args):
+    """Fill None CLI args with per-model defaults. CLI always wins."""
+    defaults = MODEL_TRAINING_CONFIGS.get(args.model, _DEFAULT_CONFIG)
+    if args.lr is None:
+        args.lr = defaults["lr"]
+    if args.weight_decay is None:
+        args.weight_decay = defaults["weight_decay"]
+    if args.freeze_backbone is None:
+        args.freeze_backbone = defaults["freeze_backbone"]
+    args.warmup_epochs = defaults.get("warmup_epochs", 0)
+    return args
+
+
+def build_scheduler(optimizer, epochs, warmup_epochs):
+    """Cosine annealing with optional linear warmup for ViT models."""
+    if warmup_epochs > 0:
+        warmup = torch.optim.lr_scheduler.LinearLR(
+            optimizer, start_factor=1e-3, end_factor=1.0, total_iters=warmup_epochs
+        )
+        cosine = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=epochs - warmup_epochs
+        )
+        return torch.optim.lr_scheduler.SequentialLR(
+            optimizer, schedulers=[warmup, cosine], milestones=[warmup_epochs]
+        )
+    return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+
+
 def set_seed(seed: int):
     """Fix all random seeds for reproducibility."""
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
-    # Makes convolutions deterministic (slight speed cost)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
@@ -41,15 +82,15 @@ def parse_args():
                         help="Number of training epochs")
     parser.add_argument("--batch_size", type=int, default=32,
                         help="Batch size for all dataloaders")
-    parser.add_argument("--lr", type=float, default=1e-4,
-                        help="Learning rate for AdamW")
-    parser.add_argument("--weight_decay", type=float, default=1e-4,
-                        help="Weight decay for AdamW")
-    parser.add_argument("--freeze_backbone", action="store_true",
+    parser.add_argument("--lr", type=float, default=None,
+                        help="Learning rate for AdamW (default: per-model config)")
+    parser.add_argument("--weight_decay", type=float, default=None,
+                        help="Weight decay for AdamW (default: per-model config)")
+    parser.add_argument("--freeze_backbone", action="store_true", default=None,
                         help="Freeze backbone weights (only train head)")
     parser.add_argument("--head_type", type=str, default="linear",
                         choices=["linear", "mlp"],
-                        help="Head type when backbone is frozen")
+                        help="Head architecture on top of backbone")
     parser.add_argument("--output_dir", type=str, default=None,
                         help="Directory to save outputs. Defaults to runs/<model>_<timestamp>")
     parser.add_argument("--seed", type=int, default=42,
@@ -71,6 +112,7 @@ def parse_args():
 
 def main():
     args = parse_args()
+    args = resolve_config(args)
 
     # ── Reproducibility ────────────────────────────────────────────────────────
     set_seed(args.seed)
@@ -106,19 +148,20 @@ def main():
         args.model,
         num_classes=2,
         pretrained=True,
-        freeze_backbone=args.freeze_backbone, #args.freeze_backbone is True or False depending on whether you passed --freeze_backbone in the terminal.
+        freeze_backbone=args.freeze_backbone,
         head_type=args.head_type if args.freeze_backbone else "linear",
         head_dropout=args.dropout,
     )
     model = model.to(device)
 
     param_info = count_parameters(model)
-    print(f"Parameters — total: {param_info['total']:,}  |  "
-          f"trainable: {param_info['trainable']:,}")
+    print(f"Parameters — total: {param_info['total']:,}  |  trainable: {param_info['trainable']:,}")
+    print(f"Config     — lr={args.lr}  weight_decay={args.weight_decay}  "
+          f"freeze_backbone={args.freeze_backbone}  warmup_epochs={args.warmup_epochs}")
 
     # ── Loss, optimiser, scheduler ─────────────────────────────────────────────
-    # Class weights: upweight malignant (minority class)
-    class_weights = torch.tensor([0.32, 0.68], dtype=torch.float32).to(device) #The weights [0.32, 0.68] mean malignant mistakes are penalised more heavily than benign mistakes 
+    # Upweight malignant (minority class) to penalise missed cancers more heavily
+    class_weights = torch.tensor([0.32, 0.68], dtype=torch.float32).to(device)
     criterion = nn.CrossEntropyLoss(weight=class_weights)
 
     optimizer = torch.optim.AdamW(
@@ -127,9 +170,7 @@ def main():
         weight_decay=args.weight_decay,
     )
 
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, T_max=args.epochs
-    )
+    scheduler = build_scheduler(optimizer, args.epochs, args.warmup_epochs)
 
     # ── Save config ────────────────────────────────────────────────────────────
     config = vars(args).copy()
@@ -146,18 +187,15 @@ def main():
     best_epoch = -1
 
     for epoch in range(1, args.epochs + 1):
-        # Train
         train_metrics = train_one_epoch(model, train_loader, criterion, optimizer, device)
-
-        # Validate
         val_metrics = evaluate(model, val_loader, criterion, device)
-
-        # Step scheduler after each epoch
         scheduler.step()
 
-        # Record history (drop raw arrays — not JSON serialisable)
+        current_lr = scheduler.get_last_lr()[0]
+
         epoch_record = {
             "epoch": epoch,
+            "lr": current_lr,
             "train_loss": round(train_metrics["loss"], 6),
             "train_auc": round(train_metrics["auc"], 6),
             "val_loss": round(val_metrics["loss"], 6),
@@ -165,14 +203,12 @@ def main():
         }
         history.append(epoch_record)
 
-        # Print summary
         print(
-            f"Epoch {epoch:02d}/{args.epochs:02d} | "
+            f"Epoch {epoch:02d}/{args.epochs:02d} | lr={current_lr:.2e} | "
             f"Train loss={train_metrics['loss']:.3f} auc={train_metrics['auc']:.3f} | "
             f"Val   loss={val_metrics['loss']:.3f} auc={val_metrics['auc']:.3f}"
         )
 
-        # Save best model
         if val_metrics["auc"] > best_val_auc:
             best_val_auc = val_metrics["auc"]
             best_epoch = epoch
@@ -186,7 +222,6 @@ def main():
                 os.path.join(args.output_dir, "best.pt"),
             )
 
-        # Always save latest checkpoint
         torch.save(
             {
                 "epoch": epoch,
@@ -198,7 +233,6 @@ def main():
             os.path.join(args.output_dir, "last.pt"),
         )
 
-        # Persist history after every epoch (safe against crashes)
         with open(os.path.join(args.output_dir, "history.json"), "w") as f:
             json.dump(history, f, indent=2)
 

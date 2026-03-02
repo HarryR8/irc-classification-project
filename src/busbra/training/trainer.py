@@ -37,9 +37,9 @@ def train_one_epoch(
         #if not frozen, goes through all layers
         optimizer.step() #updates the weights using what backpropagation just calculated
 
-        total_loss += loss.item() * images.size(0)
+        total_loss += loss.item() * images.size(0) 
 
-        probs = torch.softmax(logits, dim=1)[:, 1].detach().cpu().numpy()
+        probs = torch.softmax(logits, dim=1)[:, 1].detach().cpu().numpy() #return a single probability
         all_probs.append(probs)
         all_labels.append(labels.cpu().numpy())
 
@@ -47,7 +47,7 @@ def train_one_epoch(
     all_probs = np.concatenate(all_probs)
     avg_loss = total_loss / len(all_labels)
 
-    # Guard against single-class batches (can happen with tiny datasets)
+    # Safety guard against single-class batches (can happen with tiny datasets)
     try:
         auc = roc_auc_score(all_labels, all_probs)
     except ValueError:
@@ -81,7 +81,7 @@ def evaluate(
     all_probs = []
     all_image_ids = []
 
-    with torch.no_grad():
+    with torch.no_grad(): #same thing as in training but don't track gradients as it is eval
         for batch in tqdm(loader, desc="Eval", leave=False):
             images = batch["image"].to(device)
             labels = batch["label"].to(device)
