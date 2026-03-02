@@ -97,6 +97,15 @@ def parse_args():
                         help="Random seed for reproducibility")
     parser.add_argument("--num_workers", type=int, default=4,
                         help="Number of DataLoader worker processes")
+    parser.add_argument("--dropout", type=float, default=0.3,
+                        help="Dropout rate for MLP head layers")
+    parser.add_argument("--split_file", type=str, default="data/splits/splits.csv",
+                        help="Path to splits CSV file")
+    parser.add_argument("--images_dir", type=str, default="data/raw",
+                        help="Directory containing image files")
+    parser.add_argument("--masks_dir", type=str, default=None,
+                        help="Directory containing mask_*.png segmentation masks "
+                             "(enables lesion-crop preprocessing)")
 
     return parser.parse_args()
 
@@ -126,11 +135,12 @@ def main():
     # ── Data ───────────────────────────────────────────────────────────────────
     preprocess_key = get_preprocess_key(args.model)
     train_loader, val_loader, test_loader = create_dataloaders(
-        split_file="data/splits/splits.csv",
-        images_dir="data/raw",
+        split_file=args.split_file,
+        images_dir=args.images_dir,
         model_key=preprocess_key,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
+        masks_dir=args.masks_dir,
     )
 
     # ── Model ──────────────────────────────────────────────────────────────────
@@ -140,6 +150,7 @@ def main():
         pretrained=True,
         freeze_backbone=args.freeze_backbone,
         head_type=args.head_type if args.freeze_backbone else "linear",
+        head_dropout=args.dropout,
     )
     model = model.to(device)
 

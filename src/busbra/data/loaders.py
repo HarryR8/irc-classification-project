@@ -21,7 +21,7 @@ Typical usage
 
     for batch in train_loader:
         images = batch["image"]     # (B, 3, H, W) float32
-        labels = batch["label"]     # (B, 1)       float32
+        labels = batch["label"]     # (B,)          int64
         cases  = batch["case"]      # list[str]
         ids    = batch["image_id"]  # list[str]
 """
@@ -57,7 +57,7 @@ def make_collate_fn(preprocess_fn: Callable) -> Callable:
         A collate function compatible with torch DataLoader's
         ``collate_fn`` argument.  The returned batch dict has:
             "image"    : (B, 3, H, W)  float32 tensor
-            "label"    : (B, 1)        float32 tensor
+            "label"    : (B,)          int64 tensor
             "case"     : list[str]     length B
             "image_id" : list[str]     length B
     """
@@ -66,8 +66,7 @@ def make_collate_fn(preprocess_fn: Callable) -> Callable:
     def collate(samples: list[dict]) -> dict:
         # Apply model-specific preprocessing to each PIL image
         images = torch.stack([preprocess_fn(s["image"]) for s in samples])  # (B,3,H,W)
-        labels = torch.cat([s["label"] for s in samples])                   # (B,)
-        labels = labels.unsqueeze(1) if labels.ndim == 1 else labels        # (B,1)
+        labels = torch.tensor([s["label"] for s in samples], dtype=torch.long)  # (B,)
         cases    = [s["case"]     for s in samples]
         image_ids = [s["image_id"] for s in samples]
 
@@ -92,6 +91,7 @@ def create_dataloaders(
     batch_size: int = 32,
     num_workers: int = 4,
     size: int = 224,
+    masks_dir: str | None = None,
 ) -> tuple[DataLoader, DataLoader, DataLoader]:
     """Create train / val / test DataLoaders.
 
@@ -110,6 +110,10 @@ def create_dataloaders(
         DataLoader worker processes.
     size : int
         Target image size (used by imagenet_cnn pipeline).
+    masks_dir : str or None
+        Optional directory containing mask_*.png segmentation masks.  When
+        provided, each image is cropped to its lesion bounding box before
+        the resize/normalise pipeline runs.
 
     Returns
     -------
@@ -122,7 +126,7 @@ def create_dataloaders(
 
     # Datasets return raw PIL.Image; no transform stored inside Dataset
     datasets = {
-        split: BUSBRADataset(split_file, images_dir, split)
+        split: BUSBRADataset(split_file, images_dir, split, masks_dir=masks_dir)
         for split in ["train", "val", "test"]
     }
 
