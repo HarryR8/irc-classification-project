@@ -11,9 +11,11 @@ build/
 
 # Data (download separately)
 data/raw/
+data/masks/
 *.pt
 *.pth
 checkpoints/
+runs/
 
 # Keep splits
 !data/splits/
