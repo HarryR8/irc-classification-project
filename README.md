@@ -226,7 +226,7 @@ uv run python scripts/evaluate.py --run_dir runs/<model>_<timestamp>
 By default this evaluates on the **test** split. Pass `--split val` to evaluate on the validation split instead. Results (AUC, accuracy, sensitivity, specificity) are printed to stdout and saved to `eval_test.json` (or `eval_val.json`) inside the run directory.
 
 ## Team
-Zhuo Jin • Charlie Lam • Harry Reeve • Karolina Zvonickova (Advisor: James DesLauriers)
+Zhuo Jin • Charlie Lam • Harry Reeve • Karolina Zvonickova (Advisor: Jay DesLauriers)
 
 ## Reference
 Gómez-Flores et al. (2024). BUS-BRA: A Breast Ultrasound Dataset for Assessing CAD Systems. *Medical Physics*, 51(4), 3110-3123.
