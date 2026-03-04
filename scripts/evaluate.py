@@ -104,6 +104,10 @@ def main():
     accuracy    = (tp + tn) / len(labels)
     sensitivity = tp / (tp + fn) if (tp + fn) > 0 else float("nan")  # recall malignant
     specificity = tn / (tn + fp) if (tn + fp) > 0 else float("nan")  # recall benign
+    precision = tp / (tp + fp) if (tp + fp) > 0 else float("nan")
+    recall = tp / (tp + fn) if (tp + fn) > 0 else float("nan")  # same as sensitivity
+    denom = 2 * tp + fp + fn
+    f1_score = (2 * tp / denom) if denom > 0 else float("nan")
 
     # ── Print report ──────────────────────────────────────────────────────────
     print("\n" + "=" * 52)
@@ -113,6 +117,8 @@ def main():
     print(f"  Accuracy    : {accuracy:.4f}  ({int(tp + tn)}/{len(labels)})")
     print(f"  Sensitivity : {sensitivity:.4f}  (malignant recall, TP={tp})")
     print(f"  Specificity : {specificity:.4f}  (benign recall,    TN={tn})")
+    print(f"  Precision : {precision:.4f} ")
+    print(f"  F1_score : {f1_score:.4f} ")
     print()
     print("  Confusion matrix (rows=actual, cols=predicted):")
     print("                Pred benign  Pred malignant")
