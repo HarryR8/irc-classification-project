@@ -105,7 +105,6 @@ def main():
     sensitivity = tp / (tp + fn) if (tp + fn) > 0 else float("nan")  # recall malignant
     specificity = tn / (tn + fp) if (tn + fp) > 0 else float("nan")  # recall benign
     precision = tp / (tp + fp) if (tp + fp) > 0 else float("nan")
-    recall = tp / (tp + fn) if (tp + fn) > 0 else float("nan")  # same as sensitivity
     denom = 2 * tp + fp + fn
     f1_score = (2 * tp / denom) if denom > 0 else float("nan")
 
