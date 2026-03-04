@@ -30,6 +30,9 @@ MODEL_TRAINING_CONFIGS = {
     "efficientnet_b0": {"lr": 1e-4, "weight_decay": 1e-5, "warmup_epochs": 0, "freeze_backbone": False},
     "densenet121":     {"lr": 1e-4, "weight_decay": 1e-5, "warmup_epochs": 0, "freeze_backbone": False},
     "dinov2_base":     {"lr": 1e-5, "weight_decay": 1e-2, "warmup_epochs": 5, "freeze_backbone": True},
+    "dinov2_large":    {"lr": 1e-5, "weight_decay": 1e-2, "warmup_epochs": 5, "freeze_backbone": True},
+    "dinov3_base":     {"lr": 1e-5, "weight_decay": 1e-2, "warmup_epochs": 5, "freeze_backbone": True},
+    "dinov3_large":    {"lr": 1e-5, "weight_decay": 1e-2, "warmup_epochs": 5, "freeze_backbone": True},
     "clip_vit_base":   {"lr": 1e-5, "weight_decay": 1e-2, "warmup_epochs": 5, "freeze_backbone": True},
 }
 _DEFAULT_CONFIG = {"lr": 1e-4, "weight_decay": 1e-5, "warmup_epochs": 0, "freeze_backbone": False}

@@ -75,6 +75,25 @@ MODEL_REGISTRY: dict[str, dict] = {
         "embedding_dim": 768,
         "preprocess_key": "dinov2",
     },
+    "dinov2_large": {
+        "type": "dinov2",
+        "hub_name": "dinov2_vitl14",
+        "embedding_dim": 1024,
+        "preprocess_key": "dinov2",
+    },
+    # --- DINOv3 (HuggingFace AutoModel) -----------------------------------
+    "dinov3_base": {
+        "type": "dinov3",
+        "hf_name": "facebook/dinov3-vitb16-pretrain-lvd1689m",
+        "embedding_dim": 768,
+        "preprocess_key": "dinov3",
+    },
+    "dinov3_large": {
+        "type": "dinov3",
+        "hf_name": "facebook/dinov3-vitl16-pretrain-lvd1689m",
+        "embedding_dim": 1024,
+        "preprocess_key": "dinov3",
+    },
     # --- CLIP ViT ---------------------------------------------------------
     "clip_vit_base": {
         "type": "clip",
@@ -121,6 +140,27 @@ def _create_dinov2_backbone(config: dict, pretrained: bool) -> tuple[nn.Module, 
     model = torch.hub.load("facebookresearch/dinov2", config["hub_name"])
     model.eval()  # DINOv2 has no classifier to remove
     return model, config["embedding_dim"]
+
+
+class _DINOv3Wrapper(nn.Module):
+    """Wraps HuggingFace DINOv3 AutoModel to return pooler_output as a plain tensor."""
+    def __init__(self, model: nn.Module):
+        super().__init__()
+        self.model = model
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.model(pixel_values=x).pooler_output
+
+
+def _create_dinov3_backbone(config: dict, pretrained: bool) -> tuple[nn.Module, int]:
+    """Create DINOv3 backbone via HuggingFace AutoModel."""
+    from transformers import AutoModel, AutoConfig
+    if pretrained:
+        model = AutoModel.from_pretrained(config["hf_name"])
+    else:
+        cfg = AutoConfig.from_pretrained(config["hf_name"])
+        model = AutoModel.from_config(cfg)
+    return _DINOv3Wrapper(model), config["embedding_dim"]
 
 
 def _create_clip_backbone(config: dict, pretrained: bool) -> tuple[nn.Module, int]:
@@ -239,9 +279,11 @@ def create_model(
         else:
             return _create_timm_classifier(config, num_classes=num_classes, pretrained=pretrained)
 
-    elif model_type in ("dinov2", "clip"):
+    elif model_type in ("dinov2", "dinov3", "clip"):
         if model_type == "dinov2":
             backbone, embed_dim = _create_dinov2_backbone(config, pretrained=pretrained)
+        elif model_type == "dinov3":
+            backbone, embed_dim = _create_dinov3_backbone(config, pretrained=pretrained)
         else:
             backbone, embed_dim = _create_clip_backbone(config, pretrained=pretrained)
         head = _create_head(
@@ -299,6 +341,8 @@ def create_backbone(
         return _create_timm_backbone(config, pretrained=pretrained)
     elif model_type == "dinov2":
         return _create_dinov2_backbone(config, pretrained=pretrained)
+    elif model_type == "dinov3":
+        return _create_dinov3_backbone(config, pretrained=pretrained)
     elif model_type == "clip":
         return _create_clip_backbone(config, pretrained=pretrained)
     else:
