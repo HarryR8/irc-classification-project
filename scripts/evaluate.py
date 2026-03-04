@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 import numpy as np
 import torch
 import torch.nn as nn
-from sklearn.metrics import confusion_matrix, roc_auc_score
+from sklearn.metrics import confusion_matrix, roc_auc_score, roc_curve
 
 from busbra.data.loaders import create_dataloaders
 from busbra.models import create_model, get_preprocess_key
@@ -96,8 +96,24 @@ def main():
     probs  = results["probs"]    # (N,) float — P(malignant)
 
     # ── Metrics ───────────────────────────────────────────────────────────────
-    preds = (probs >= 0.5).astype(int)
+    preds = (probs >= threshold_90sens).astype(int)
     auc   = roc_auc_score(labels, probs)
+
+    target_sensitivity = 0.90
+
+    valid_idx = np.where(tpr >= target_sensitivity)[0]
+
+    if len(valid_idx) > 0:
+        best_idx = valid_idx[0]
+        threshold_90sens = thresholds[best_idx]
+    elif:
+        threshold_90sens = 0.8
+    elif:
+        threshold_90sens = 0.7
+    else:
+        threshold_90sens = 0.5
+        
+    fpr, tpr, thresholds = roc_curve(labels, probs)
     cm    = confusion_matrix(labels, preds)   # rows=actual, cols=predicted
 
     tn, fp, fn, tp = cm.ravel()
@@ -116,6 +132,8 @@ def main():
     print(f"  Accuracy    : {accuracy:.4f}  ({int(tp + tn)}/{len(labels)})")
     print(f"  Sensitivity : {sensitivity:.4f}  (malignant recall, TP={tp})")
     print(f"  Specificity : {specificity:.4f}  (benign recall,    TN={tn})")
+    print(f"  Threshold used : {threshold_90sens:.4f} (target sensitivity ≥ 0.90)")
+    print()
     print(f"  Precision : {precision:.4f} ")
     print(f"  F1_score : {f1_score:.4f} ")
     print()
