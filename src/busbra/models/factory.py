@@ -129,7 +129,8 @@ def _create_clip_backbone(config: dict, pretrained: bool) -> tuple[nn.Module, in
     Requires: uv pip install -e ".[clip]"
     """
     import open_clip
-    model, _, _ = open_clip.create_model_and_transforms(config["clip_name"])
+    pretrained_tag = "openai" if pretrained else None
+    model, _, _ = open_clip.create_model_and_transforms(config["clip_name"], pretrained=pretrained_tag)
     visual = model.visual  # Extract vision encoder only
     return visual, config["embedding_dim"]
 
