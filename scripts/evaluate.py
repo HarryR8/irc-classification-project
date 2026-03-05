@@ -1,8 +1,13 @@
 """Evaluate a trained BUS-BRA classifier on val or test split.
 
 Example usage:
-    python scripts/evaluate.py --run_dir runs/efficientnet_b0_20260228_192617
-    python scripts/evaluate.py --run_dir runs/resnet18_20260228_143021 --split val
+    uv run python scripts/evaluate.py --run_dir runs/resnet18_20260228_143021 --split val
+uv run python scripts/evaluate.py \
+  --run_dir runs/dinov2_base_20260304_180318 \
+  --images_dir /rds/general/user/zj1024/home/irc-classification-project/data/raw \
+  --masks_dir /rds/general/user/zj1024/home/irc-classification-project/data/masks
+
+
 """
 
 import argparse

@@ -2,11 +2,11 @@
 CLI entrypoint for training the BUS-BRA breast ultrasound classifier.
 
 Example usage:
-    python scripts/train.py --model resnet18 --epochs 30 --batch_size 32
-    python scripts/train.py --model dinov2_base --epochs 30
-    python scripts/train.py --model resnet18 --lr 5e-5 --epochs 30  # override default lr
+    uv run python scripts/train.py --model resnet18 --epochs 30 --batch_size 32
+    uv run python scripts/train.py --model dinov2_base --epochs 30
+    uv run python scripts/train.py --model resnet18 --lr 5e-5 --epochs 30  # override default lr
+    uv run python scripts/train.py --model clip_vit_base --epochs 30 --images_dir /rds/general/user/zj1024/home/irc-classification-project/data/raw --masks_dir /rds/general/user/zj1024/home/irc-classification-project/data/masks
 """
-
 import argparse
 import json
 import os
