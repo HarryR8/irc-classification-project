@@ -38,6 +38,7 @@ irc-classification-project/
 │   │   └── __init__.py       # ✅ Public exports
 │   └── training/
 │       ├── trainer.py        # ✅ train_one_epoch + evaluate functions
+│       ├── metrics.py        # ✅ Pure metrics library (metrics_at_threshold, sweep_thresholds, find_optimal_thresholds)
 │       └── __init__.py       # ✅ Public exports
 └── data/
     ├── raw/            ← 🚨 put dataset (BUS-BRA) here
@@ -107,7 +108,7 @@ Expected output for each split:
 ```
 [train]
   image  shape=(4, 3, 224, 224)  dtype=torch.float32  min=-2.118  max=2.640
-  label  shape=(4, 1)  dtype=torch.float32  unique=[0.0, 1.0]
+  label  shape=(4,)  dtype=torch.int64  unique=[0, 1]
   case   type=list  len=4  example='42'
   id     type=list  len=4   example='bus_0042-l'
   ✓ assertions passed
@@ -220,10 +221,55 @@ Key CLI arguments for `train.py`:
 
 ### 5) Evaluate a trained model
 ```bash
+# Evaluate on test split (default)
 uv run python scripts/evaluate.py --run_dir runs/<model>_<timestamp>
+
+# Evaluate on validation split
+uv run python scripts/evaluate.py --run_dir runs/<model>_<timestamp> --split val
+
+# Evaluate with lesion-crop preprocessing
+uv run python scripts/evaluate.py --run_dir runs/<model>_<timestamp> --masks_dir data/masks
 ```
 
-By default this evaluates on the **test** split. Pass `--split val` to evaluate on the validation split instead. Results (AUC, accuracy, sensitivity, specificity) are printed to stdout and saved to `eval_test.json` (or `eval_val.json`) inside the run directory.
+Key CLI arguments for `evaluate.py`:
+
+| Argument | Default | Description |
+|---|---|---|
+| `--run_dir` | required | Run directory containing `config.json` and `best.pt` |
+| `--split` | `test` | Split to evaluate: `val` or `test` |
+| `--threshold_split` | `val` | Split used to select optimal thresholds (`val`, `test`, or `same`) |
+| `--masks_dir` | `None` | Mask directory for lesion-crop preprocessing |
+| `--num_thresholds` | `201` | Number of threshold grid points swept in [0, 1] |
+
+Three files are written to `--run_dir`:
+
+| Output file | Contents |
+|---|---|
+| `eval_<split>.json` | AUC, per-metric results at threshold 0.5, four optimal threshold candidates |
+| `eval_<split>_roc_curve.png` | Publication-ready ROC curve at 300 dpi |
+| `eval_<split>_threshold_sweep.csv` | Full per-threshold metrics table (`num_thresholds` rows) |
+
+Four clinically motivated threshold candidates are reported (selected from the sweep):
+
+| Criterion | Strategy |
+|---|---|
+| ROC Youden J | max(TPR − FPR) |
+| Max F1 | maximise F1 score |
+| Sensitivity ≥ 0.95 | highest specificity subject to sensitivity ≥ 0.95 |
+| Specificity ≥ 0.90 | highest sensitivity subject to specificity ≥ 0.90 |
+
+The metrics library (`busbra.training.metrics`) can also be used standalone:
+
+```python
+from busbra.training.metrics import metrics_at_threshold, find_optimal_thresholds
+import numpy as np
+
+m = metrics_at_threshold(y_true, y_score, threshold=0.5)
+# {"sensitivity": ..., "specificity": ..., "precision": ..., "npv": ..., "f1": ..., "accuracy": ..., "tp": ..., ...}
+
+result = find_optimal_thresholds(y_true, y_score)
+print(result["by_roc_youden"])   # best Youden J threshold
+```
 
 ## Team
 Zhuo Jin • Charlie Lam • Harry Reeve • Karolina Zvonickova (Advisor: Jay DesLauriers)

@@ -27,7 +27,7 @@ runs/
 .claude/
 
 # Defensive, redundant
-BUSBRA/
+data/BUSBRA/
 Images/
 Masks/
 raw/
