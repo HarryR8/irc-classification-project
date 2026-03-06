@@ -52,8 +52,8 @@ are selected by optimising different clinical criteria from the threshold sweep:
 
 Metric library
 --------------
-Core metrics logic lives in src/busbra/metrics.py and is imported as:
-    from busbra.metrics import metrics_at_threshold, find_optimal_thresholds
+Core metrics logic lives in src/busbra/training/metrics.py and is imported as:
+    from busbra.training.metrics import metrics_at_threshold, find_optimal_thresholds
 """
 import argparse
 import json
@@ -86,7 +86,7 @@ except ImportError:
     confusion_matrix_at_thresholds = None
 
 from busbra.data.loaders import create_dataloaders
-from busbra.metrics import find_optimal_thresholds, metrics_at_threshold
+from busbra.training.metrics import find_optimal_thresholds, metrics_at_threshold
 from busbra.models import create_model, get_preprocess_key
 from busbra.training import evaluate
 

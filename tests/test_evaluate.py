@@ -10,7 +10,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 
-from busbra.metrics import (
+from busbra.training.metrics import (
     find_optimal_thresholds,
     metrics_at_threshold,
     sweep_thresholds,
