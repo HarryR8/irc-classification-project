@@ -1,3 +1,60 @@
+"""Evaluate a trained BUS-BRA classifier on the val or test split.
+
+Loads a checkpoint from a run directory produced by train.py, runs inference,
+computes binary classification metrics at multiple probability thresholds, saves
+a ROC curve PNG, a full threshold-sweep CSV, and a structured JSON report.
+
+Typical usage
+-------------
+Evaluate the best checkpoint on the test split (default):
+    uv run python scripts/evaluate.py --run_dir runs/resnet18_20260228_143021
+
+Evaluate on the validation split instead:
+    uv run python scripts/evaluate.py --run_dir runs/resnet18_20260228_143021 --split val
+
+Use the test split both for evaluation and for threshold selection:
+    uv run python scripts/evaluate.py --run_dir runs/resnet18_20260228_143021 \\
+        --split test --threshold_split same
+
+Evaluate with lesion-crop preprocessing (requires mask files):
+    uv run python scripts/evaluate.py --run_dir runs/resnet18_20260228_143021 \\
+        --masks_dir data/masks
+
+CLI arguments
+-------------
+--run_dir           Path to the run directory (must contain config.json and best.pt).
+--split             Split to evaluate: "val" or "test" (default: "test").
+--images_dir        Directory containing the raw image files (default: data/raw).
+--split_file        Path to the patient-level splits CSV (default: data/splits/splits.csv).
+--masks_dir         Optional path to mask_*.png files; enables lesion-crop preprocessing.
+--roc_png           Override the output path for the ROC curve PNG.
+--threshold_split   Which split is used to select optimal thresholds:
+                      "val"  — use validation set (default; avoids test-set leakage)
+                      "test" — use the same split being evaluated
+                      "same" — alias for the split passed to --split
+--num_thresholds    Number of evenly-spaced thresholds to sweep in [0, 1] (default: 201).
+--thresholds_csv    Override the output path for the threshold-sweep CSV.
+
+Outputs written to --run_dir
+----------------------------
+eval_<split>.json                Structured results (AUC, metrics at 0.5, optimal thresholds).
+eval_<split>_roc_curve.png       Publication-ready ROC curve at 300 dpi.
+eval_<split>_threshold_sweep.csv Full per-threshold metrics table (num_thresholds rows).
+
+Metrics reported
+----------------
+Baseline metrics are computed at threshold = 0.5.  Four additional operating points
+are selected by optimising different clinical criteria from the threshold sweep:
+  - ROC Youden J        max(TPR - FPR) on the ROC curve
+  - Max F1              threshold that maximises F1 score
+  - Sensitivity >= 0.95 highest specificity subject to sensitivity >= 0.95
+  - Specificity >= 0.90 highest sensitivity subject to specificity >= 0.90
+
+Metric library
+--------------
+Core metrics logic lives in src/busbra/metrics.py and is imported as:
+    from busbra.metrics import metrics_at_threshold, find_optimal_thresholds
+"""
 import argparse
 import json
 import os
