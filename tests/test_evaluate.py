@@ -1,6 +1,5 @@
-"""Tests for scripts/evaluate.py — helper functions and main() integration."""
+"""Tests for busbra.metrics and the evaluate.py CLI integration."""
 import json
-import math
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -11,7 +10,12 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 
-# Make the scripts directory importable
+from busbra.training.metrics import (
+    find_optimal_thresholds,
+    metrics_at_threshold,
+    sweep_thresholds,
+)
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 import evaluate as eval_module
 
@@ -19,23 +23,17 @@ import evaluate as eval_module
 # ─── Fixtures ────────────────────────────────────────────────────────────────
 
 @pytest.fixture
-def perfect_labels_probs():
-    """Labels and probs for a perfect classifier."""
-    labels = np.array([0, 0, 0, 1, 1, 1])
-    probs  = np.array([0.1, 0.2, 0.3, 0.7, 0.8, 0.9])
+def balanced_labels_probs():
+    """8-sample dataset: well-separated scores, TP=3, TN=2, FP=1, FN=1 at thr=0.5."""
+    labels = np.array([0, 0, 0, 1, 1, 1, 1])
+    probs  = np.array([0.1, 0.2, 0.6, 0.3, 0.7, 0.8, 0.9])
     return labels, probs
 
 
 @pytest.fixture
-def known_labels_probs():
-    """Labels and probs with a known 2×2 confusion matrix at threshold=0.5.
-
-    Applying threshold 0.5:  preds = [0, 0, 1, 0, 1, 1, 1]
-    labels                          = [0, 0, 0, 1, 1, 1, 1]
-    TN=2, FP=1, FN=1, TP=3  → 7 samples
-    """
-    labels = np.array([0, 0, 0, 1, 1, 1, 1])
-    probs  = np.array([0.1, 0.2, 0.6, 0.3, 0.7, 0.8, 0.9])
+def perfect_labels_probs():
+    labels = np.array([0, 0, 0, 1, 1, 1])
+    probs  = np.array([0.1, 0.2, 0.3, 0.7, 0.8, 0.9])
     return labels, probs
 
 
@@ -60,7 +58,6 @@ def dummy_loader():
 
 @pytest.fixture
 def tmp_run_dir(tmp_path):
-    """Minimal run directory with config.json and a stub best.pt checkpoint."""
     config = {
         "model": "resnet18",
         "freeze_backbone": True,
@@ -70,139 +67,178 @@ def tmp_run_dir(tmp_path):
         "num_workers": 0,
     }
     (tmp_path / "config.json").write_text(json.dumps(config))
+    (tmp_path / "best.pt").write_bytes(b"")  # stub — torch.load is patched in tests
     return tmp_path
 
 
-# ─── Group 1: find_threshold_at_sensitivity ──────────────────────────────────
+# ─── Group 1: metrics_at_threshold ───────────────────────────────────────────
 
-class TestFindThresholdAtSensitivity:
-
-    def test_threshold_found_at_target(self):
-        tpr        = np.array([0.0, 0.5, 0.9, 1.0])
-        thresholds = np.array([1.0, 0.8, 0.6, 0.4])
-        result = eval_module.find_threshold_at_sensitivity(tpr, thresholds, target=0.90)
-        assert result == pytest.approx(0.6)
-
-    def test_threshold_fallback_to_0_5_when_not_achievable(self):
-        tpr        = np.array([0.0, 0.5, 0.8])
-        thresholds = np.array([1.0, 0.8, 0.6])
-        result = eval_module.find_threshold_at_sensitivity(tpr, thresholds, target=0.90)
-        assert result == pytest.approx(0.5)
-
-    def test_threshold_picks_first_valid_not_last(self):
-        # Multiple thresholds achieve target; should return the first (most conservative)
-        tpr        = np.array([0.0, 0.91, 0.95, 1.0])
-        thresholds = np.array([1.0, 0.7,  0.5,  0.3])
-        result = eval_module.find_threshold_at_sensitivity(tpr, thresholds, target=0.90)
-        assert result == pytest.approx(0.7)
-
-    def test_exact_target_counts_as_valid(self):
-        tpr        = np.array([0.0, 0.90, 1.0])
-        thresholds = np.array([1.0, 0.6,  0.3])
-        result = eval_module.find_threshold_at_sensitivity(tpr, thresholds, target=0.90)
-        assert result == pytest.approx(0.6)
-
-
-# ─── Group 2: compute_metrics ────────────────────────────────────────────────
-
-class TestComputeMetrics:
+class TestMetricsAtThreshold:
 
     def test_perfect_classifier(self, perfect_labels_probs):
         labels, probs = perfect_labels_probs
-        m = eval_module.compute_metrics(labels, probs, threshold=0.5)
+        m = metrics_at_threshold(labels, probs, threshold=0.5)
         assert m["accuracy"]    == pytest.approx(1.0)
         assert m["sensitivity"] == pytest.approx(1.0)
         assert m["specificity"] == pytest.approx(1.0)
         assert m["precision"]   == pytest.approx(1.0)
-        assert m["f1_score"]    == pytest.approx(1.0)
+        assert m["f1"]          == pytest.approx(1.0)
 
-    def test_known_values(self, known_labels_probs):
-        labels, probs = known_labels_probs
-        # At threshold=0.5: TP=3, TN=2, FP=1, FN=1
-        m = eval_module.compute_metrics(labels, probs, threshold=0.5)
+    def test_known_confusion_matrix(self, balanced_labels_probs):
+        labels, probs = balanced_labels_probs
+        # At threshold=0.5: TN=2, FP=1, FN=1, TP=3
+        m = metrics_at_threshold(labels, probs, threshold=0.5)
         assert m["tp"] == 3
         assert m["tn"] == 2
         assert m["fp"] == 1
         assert m["fn"] == 1
         assert m["accuracy"]    == pytest.approx(5 / 7)
-        assert m["sensitivity"] == pytest.approx(3 / 4)   # tp/(tp+fn) = 3/4
-        assert m["specificity"] == pytest.approx(2 / 3)   # tn/(tn+fp) = 2/3
-        assert m["precision"]   == pytest.approx(3 / 4)   # tp/(tp+fp) = 3/4
-        # F1 = 2*3 / (2*3+1+1) = 6/8 = 3/4
-        assert m["f1_score"]    == pytest.approx(3 / 4)
+        assert m["sensitivity"] == pytest.approx(3 / 4)
+        assert m["specificity"] == pytest.approx(2 / 3)
+        assert m["precision"]   == pytest.approx(3 / 4)
+        assert m["f1"]          == pytest.approx(3 / 4)
 
-    def test_all_predicted_negative_gives_zero_sensitivity(self):
+    def test_threshold_in_output(self, balanced_labels_probs):
+        labels, probs = balanced_labels_probs
+        m = metrics_at_threshold(labels, probs, threshold=0.7)
+        assert m["threshold"] == pytest.approx(0.7)
+
+    def test_confusion_counts_are_int(self, balanced_labels_probs):
+        labels, probs = balanced_labels_probs
+        m = metrics_at_threshold(labels, probs, threshold=0.5)
+        for key in ("tp", "tn", "fp", "fn"):
+            assert isinstance(m[key], int)
+
+    def test_all_predicted_negative_zero_division(self):
+        # zero_division=0: sensitivity=0, precision=0, f1=0
         labels = np.array([0, 1, 0, 1])
         probs  = np.array([0.1, 0.2, 0.1, 0.2])
-        m = eval_module.compute_metrics(labels, probs, threshold=0.5)
-        assert m["tp"] == 0
+        m = metrics_at_threshold(labels, probs, threshold=0.5)
         assert m["sensitivity"] == pytest.approx(0.0)
-        assert m["f1_score"]    == pytest.approx(0.0)
+        assert m["precision"]   == pytest.approx(0.0)
+        assert m["f1"]          == pytest.approx(0.0)
+        assert m["tp"] == 0
 
-    def test_all_predicted_positive_gives_zero_specificity(self):
+    def test_all_predicted_positive_zero_specificity(self):
         labels = np.array([0, 1, 0, 1])
         probs  = np.array([0.9, 0.9, 0.9, 0.9])
-        m = eval_module.compute_metrics(labels, probs, threshold=0.5)
-        assert m["tn"] == 0
+        m = metrics_at_threshold(labels, probs, threshold=0.5)
         assert m["specificity"] == pytest.approx(0.0)
+        assert m["tn"] == 0
 
-    def test_sensitivity_nan_when_no_positive_labels(self):
+    def test_single_class_labels_zero_division(self):
+        # All benign: no positives → sensitivity/precision/f1 = 0
         labels = np.array([0, 0, 0, 0])
         probs  = np.array([0.1, 0.2, 0.3, 0.4])
-        m = eval_module.compute_metrics(labels, probs, threshold=0.5)
-        assert math.isnan(m["sensitivity"])
+        m = metrics_at_threshold(labels, probs, threshold=0.5)
+        assert m["sensitivity"] == pytest.approx(0.0)
+        assert m["npv"]         == pytest.approx(1.0)  # TN/(TN+FN)=4/4
 
-    def test_specificity_nan_when_no_negative_labels(self):
-        labels = np.array([1, 1, 1, 1])
-        probs  = np.array([0.6, 0.7, 0.8, 0.9])
-        m = eval_module.compute_metrics(labels, probs, threshold=0.5)
-        assert math.isnan(m["specificity"])
+    def test_npv_calculation(self, balanced_labels_probs):
+        labels, probs = balanced_labels_probs
+        # TN=2, FN=1 → NPV = 2/3
+        m = metrics_at_threshold(labels, probs, threshold=0.5)
+        assert m["npv"] == pytest.approx(2 / 3)
 
-    def test_f1_nan_when_no_positive_predictions_or_labels(self):
-        # All labels 0, all predicted 0 → tp=0, fp=0, fn=0 → denom=0
+
+# ─── Group 2: sweep_thresholds ───────────────────────────────────────────────
+
+class TestSweepThresholds:
+
+    def test_returns_correct_number_of_rows(self, balanced_labels_probs):
+        labels, probs = balanced_labels_probs
+        rows, df = sweep_thresholds(labels, probs, num_thresholds=11)
+        assert len(rows) == 11
+        assert len(df) == 11
+
+    def test_dataframe_has_expected_columns(self, balanced_labels_probs):
+        labels, probs = balanced_labels_probs
+        _, df = sweep_thresholds(labels, probs, num_thresholds=11)
+        for col in ("threshold", "sensitivity", "specificity", "precision", "f1", "accuracy", "tp", "tn", "fp", "fn"):
+            assert col in df.columns
+
+    def test_thresholds_span_zero_to_one(self, balanced_labels_probs):
+        labels, probs = balanced_labels_probs
+        _, df = sweep_thresholds(labels, probs, num_thresholds=11)
+        assert df["threshold"].min() == pytest.approx(0.0)
+        assert df["threshold"].max() == pytest.approx(1.0)
+
+    def test_raises_on_too_few_thresholds(self, balanced_labels_probs):
+        labels, probs = balanced_labels_probs
+        with pytest.raises(ValueError, match="num_thresholds"):
+            sweep_thresholds(labels, probs, num_thresholds=1)
+
+
+# ─── Group 3: find_optimal_thresholds ────────────────────────────────────────
+
+class TestFindOptimalThresholds:
+
+    def test_returns_expected_keys(self, balanced_labels_probs):
+        labels, probs = balanced_labels_probs
+        result = find_optimal_thresholds(labels, probs, num_thresholds=21)
+        for key in ("by_roc_youden", "by_max_f1", "by_target_sensitivity_95",
+                    "by_target_specificity_90", "metrics_df"):
+            assert key in result
+
+    def test_youden_threshold_in_unit_interval(self, balanced_labels_probs):
+        labels, probs = balanced_labels_probs
+        result = find_optimal_thresholds(labels, probs, num_thresholds=21)
+        thr = result["by_roc_youden"]
+        if thr is not None:
+            assert 0.0 <= thr <= 1.0
+
+    def test_single_class_youden_is_none(self):
         labels = np.array([0, 0, 0, 0])
-        probs  = np.array([0.1, 0.2, 0.1, 0.2])
-        m = eval_module.compute_metrics(labels, probs, threshold=0.5)
-        assert math.isnan(m["f1_score"])
+        probs  = np.array([0.1, 0.2, 0.3, 0.4])
+        result = find_optimal_thresholds(labels, probs, num_thresholds=11)
+        assert result["by_roc_youden"] is None
 
-    def test_confusion_matrix_values_are_int(self, known_labels_probs):
-        labels, probs = known_labels_probs
-        m = eval_module.compute_metrics(labels, probs, threshold=0.5)
-        for key in ("tp", "tn", "fp", "fn"):
-            assert isinstance(m[key], int), f"{key} should be int"
+    def test_sensitivity_95_threshold_achieves_target(self, perfect_labels_probs):
+        labels, probs = perfect_labels_probs
+        result = find_optimal_thresholds(labels, probs, num_thresholds=101)
+        thr = result["by_target_sensitivity_95"]
+        if thr is not None:
+            m = metrics_at_threshold(labels, probs, thr)
+            assert m["sensitivity"] >= 0.95
+
+    def test_specificity_90_threshold_achieves_target(self, perfect_labels_probs):
+        labels, probs = perfect_labels_probs
+        result = find_optimal_thresholds(labels, probs, num_thresholds=101)
+        thr = result["by_target_specificity_90"]
+        if thr is not None:
+            m = metrics_at_threshold(labels, probs, thr)
+            assert m["specificity"] >= 0.90
+
+    def test_metrics_df_rows_match_num_thresholds(self, balanced_labels_probs):
+        labels, probs = balanced_labels_probs
+        result = find_optimal_thresholds(labels, probs, num_thresholds=51)
+        assert len(result["metrics_df"]) == 51
 
 
-# ─── Group 3: main() integration ─────────────────────────────────────────────
+# ─── Group 4: main() integration ─────────────────────────────────────────────
 
 def _make_fake_evaluate_fn(n=8):
-    """Return a mock for busbra.training.evaluate that returns canned arrays."""
     rng = np.random.default_rng(0)
     labels = np.array([0, 1] * (n // 2))
     probs  = rng.uniform(0.1, 0.9, size=n)
-    # Ensure both classes present so roc_auc_score doesn't raise
     probs[labels == 1] = np.clip(probs[labels == 1], 0.5, 0.95)
     probs[labels == 0] = np.clip(probs[labels == 0], 0.05, 0.49)
     return MagicMock(return_value={"labels": labels, "probs": probs, "loss": 0.4, "auc": 0.85})
 
 
-def _make_fake_model():
-    """Tiny linear model whose state_dict can be loaded."""
-    return nn.Linear(10, 2)
-
-
 class TestMainIntegration:
 
     def _run_main(self, monkeypatch, tmp_run_dir, dummy_loader, split="test"):
-        """Patch all I/O-heavy dependencies and call main()."""
-        fake_model = _make_fake_model()
+        fake_model = nn.Linear(10, 2)
         fake_ckpt  = {
             "model_state_dict": fake_model.state_dict(),
             "epoch": 5,
             "val_auc": 0.88,
         }
-
-        monkeypatch.setattr("sys.argv", ["evaluate.py", "--run_dir", str(tmp_run_dir),
-                                         "--split", split])
+        monkeypatch.setattr("sys.argv", [
+            "evaluate.py", "--run_dir", str(tmp_run_dir),
+            "--split", split, "--threshold_split", "same",
+        ])
         with (
             patch.object(eval_module, "create_dataloaders",
                          return_value=(dummy_loader, dummy_loader, dummy_loader)),
@@ -215,10 +251,9 @@ class TestMainIntegration:
 
     def test_main_creates_eval_json(self, monkeypatch, tmp_run_dir, dummy_loader):
         self._run_main(monkeypatch, tmp_run_dir, dummy_loader, split="test")
-        out = tmp_run_dir / "eval_test.json"
-        assert out.exists(), "eval_test.json should be created"
+        assert (tmp_run_dir / "eval_test.json").exists()
 
-    def test_main_val_split_writes_correct_split_key(self, monkeypatch, tmp_run_dir, dummy_loader):
+    def test_main_val_split_key_in_json(self, monkeypatch, tmp_run_dir, dummy_loader):
         self._run_main(monkeypatch, tmp_run_dir, dummy_loader, split="val")
         data = json.loads((tmp_run_dir / "eval_val.json").read_text())
         assert data["split"] == "val"
@@ -227,17 +262,20 @@ class TestMainIntegration:
         self._run_main(monkeypatch, tmp_run_dir, dummy_loader, split="test")
         data = json.loads((tmp_run_dir / "eval_test.json").read_text())
         for key in ("split", "checkpoint_epoch", "auc_roc", "accuracy",
-                    "sensitivity", "specificity", "confusion_matrix", "n_samples"):
+                    "sensitivity", "specificity", "confusion_matrix",
+                    "optimal_thresholds", "n_samples"):
             assert key in data, f"Missing key: {key}"
 
-    def test_main_json_types_are_correct(self, monkeypatch, tmp_run_dir, dummy_loader):
+    def test_main_json_confusion_matrix_values_are_int(self, monkeypatch, tmp_run_dir, dummy_loader):
         self._run_main(monkeypatch, tmp_run_dir, dummy_loader, split="test")
         data = json.loads((tmp_run_dir / "eval_test.json").read_text())
-        assert isinstance(data["auc_roc"],    float)
-        assert isinstance(data["accuracy"],   float)
-        assert isinstance(data["sensitivity"], float)
-        assert isinstance(data["specificity"], float)
-        assert isinstance(data["checkpoint_epoch"], int)
-        cm = data["confusion_matrix"]
         for key in ("tn", "fp", "fn", "tp"):
-            assert isinstance(cm[key], int), f"confusion_matrix.{key} should be int"
+            assert isinstance(data["confusion_matrix"][key], int)
+
+    def test_main_creates_roc_png(self, monkeypatch, tmp_run_dir, dummy_loader):
+        self._run_main(monkeypatch, tmp_run_dir, dummy_loader, split="test")
+        assert (tmp_run_dir / "eval_test_roc_curve.png").exists()
+
+    def test_main_creates_threshold_sweep_csv(self, monkeypatch, tmp_run_dir, dummy_loader):
+        self._run_main(monkeypatch, tmp_run_dir, dummy_loader, split="test")
+        assert (tmp_run_dir / "eval_test_threshold_sweep.csv").exists()

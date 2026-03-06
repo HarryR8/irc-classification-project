@@ -190,13 +190,35 @@ def _create_dino_backbone(config: dict, pretrained: bool) -> tuple[nn.Module, in
     return DinoBackbone(model), embedding_dim
 
 
+class _DINOv3Wrapper(nn.Module):
+    """Wraps HuggingFace DINOv3 AutoModel to return pooler_output as a plain tensor."""
+    def __init__(self, model: nn.Module):
+        super().__init__()
+        self.model = model
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.model(pixel_values=x).pooler_output
+
+
+def _create_dinov3_backbone(config: dict, pretrained: bool) -> tuple[nn.Module, int]:
+    """Create DINOv3 backbone via HuggingFace AutoModel."""
+    from transformers import AutoModel, AutoConfig
+    if pretrained:
+        model = AutoModel.from_pretrained(config["hf_name"])
+    else:
+        cfg = AutoConfig.from_pretrained(config["hf_name"])
+        model = AutoModel.from_config(cfg)
+    return _DINOv3Wrapper(model), config["embedding_dim"]
+
+
 def _create_clip_backbone(config: dict, pretrained: bool) -> tuple[nn.Module, int]:
     """Create CLIP visual encoder via open_clip.
 
     Requires: uv pip install -e ".[clip]"
     """
     import open_clip
-    model, _, _ = open_clip.create_model_and_transforms(config["clip_name"])
+    pretrained_tag = "openai" if pretrained else None
+    model, _, _ = open_clip.create_model_and_transforms(config["clip_name"], pretrained=pretrained_tag)
     visual = model.visual  # Extract vision encoder only
     return visual, config["embedding_dim"]
 
