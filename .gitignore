@@ -25,6 +25,7 @@ runs/
 .vscode/
 .DS_Store
 .claude/
+.matplotlib/
 
 # Defensive, redundant
 data/BUSBRA/

@@ -13,9 +13,7 @@ Supported model_keys
                       Training split adds flip/rotate/brightness augmentation.
     "clip"          — HuggingFace CLIPProcessor (openai/clip-vit-base-patch32).
     "dinov2"        — HuggingFace AutoImageProcessor (facebook/dinov2-base).
-    "dinov3"        — HuggingFace AutoImageProcessor (facebook/dinov2-large).
-                      ('dinov3' is treated as the large DINOv2 variant until a
-                       dedicated DINOv3 checkpoint is released.)
+    "dinov3"        — HuggingFace AutoImageProcessor (facebook/dinov3-vitb16-pretrain-lvd1689m).
 """
 
 from __future__ import annotations

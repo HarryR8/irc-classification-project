@@ -91,6 +91,12 @@ from busbra.models import create_model, get_preprocess_key
 from busbra.training import evaluate
 
 
+def find_threshold_at_sensitivity(tpr, thresholds, target: float = 0.90) -> float:
+    """Return the lowest threshold that achieves >= target sensitivity."""
+    valid = np.where(tpr >= target)[0]
+    return float(thresholds[valid[0]]) if len(valid) > 0 else 0.5
+
+
 def parse_args():
     # Evaluation split and artifact/output controls.
     parser = argparse.ArgumentParser(description="Evaluate a BUS-BRA checkpoint")
