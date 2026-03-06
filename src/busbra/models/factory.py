@@ -110,19 +110,19 @@ MODEL_REGISTRY: dict[str, dict] = {
     # --- DINOv3 (patch size 16, August 2025, SOTA) via HuggingFace ------
     "dinov3_small": {
         "type": "dinov3",
-        "hf_name": "facebook/dinov3-small",
+        "hf_name": "facebook/dinov3-vits16-pretrain-lvd1689m",
         "embedding_dim": 384,
         "preprocess_key": "dinov3",
     },
     "dinov3_base": {
         "type": "dinov3",
-        "hf_name": "facebook/dinov3-base",
+        "hf_name": "facebook/dinov3-vitb16-pretrain-lvd1689m",
         "embedding_dim": 768,
         "preprocess_key": "dinov3",
     },
     "dinov3_large": {
         "type": "dinov3",
-        "hf_name": "facebook/dinov3-large",
+        "hf_name": "facebook/dinov3-vitl16-pretrain-lvd1689m",
         "embedding_dim": 1024,
         "preprocess_key": "dinov3",
     },
