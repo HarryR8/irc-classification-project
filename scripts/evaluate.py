@@ -13,12 +13,12 @@ Evaluate on the validation split instead:
     uv run python scripts/evaluate.py --run_dir runs/resnet18_20260228_143021 --split val
 
 Use the test split both for evaluation and for threshold selection:
-    uv run python scripts/evaluate.py --run_dir runs/resnet18_20260228_143021 \\
+    uv run python scripts/evaluate.py --run_dir runs/resnet18_20260228_143021 \
         --split test --threshold_split same
 
-Evaluate with lesion-crop preprocessing (requires mask files):
-    uv run python scripts/evaluate.py --run_dir runs/resnet18_20260228_143021 \\
-        --masks_dir data/masks
+Override data paths (e.g. on HPC):
+    uv run python scripts/evaluate.py --run_dir runs/resnet18_20260228_143021 \
+        --images_dir /path/to/data/raw --masks_dir /path/to/data/masks
 
 CLI arguments
 -------------

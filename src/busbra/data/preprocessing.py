@@ -189,9 +189,7 @@ def _make_clip_preprocess(split: str, size: int, model_name: str = _CLIP_DEFAULT
 
 _DINO_CHECKPOINTS = {
     "dinov2": "facebook/dinov2-base",
-    # 'dinov3' is treated as the large DINOv2 variant until a dedicated
-    # checkpoint is available.
-    "dinov3": "facebook/dinov2-large",
+    "dinov3": "facebook/dinov3-vitb16-pretrain-lvd1689m",
 }
 
 
