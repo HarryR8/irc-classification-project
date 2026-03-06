@@ -328,8 +328,10 @@ def create_model(
             return _create_timm_classifier(config, num_classes=num_classes, pretrained=pretrained)
 
     elif model_type in ("dinov2", "dinov3", "clip"):
-        if model_type in ("dinov2", "dinov3"):
+        if model_type == "dinov2":
             backbone, embed_dim = _create_dino_backbone(config, pretrained=pretrained)
+        elif model_type == "dinov3":
+            backbone, embed_dim = _create_dinov3_backbone(config, pretrained=pretrained)
         else:
             backbone, embed_dim = _create_clip_backbone(config, pretrained=pretrained)
         head = _create_head(
@@ -385,8 +387,10 @@ def create_backbone(
 
     if model_type == "timm":
         return _create_timm_backbone(config, pretrained=pretrained)
-    elif model_type in ("dinov2", "dinov3"):
+    elif model_type == "dinov2":
         return _create_dino_backbone(config, pretrained=pretrained)
+    elif model_type == "dinov3":
+        return _create_dinov3_backbone(config, pretrained=pretrained)
     elif model_type == "clip":
         return _create_clip_backbone(config, pretrained=pretrained)
     else:

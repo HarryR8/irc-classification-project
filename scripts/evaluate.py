@@ -97,23 +97,6 @@ def find_threshold_at_sensitivity(tpr, thresholds, target: float = 0.90) -> floa
     return float(thresholds[valid[0]]) if len(valid) > 0 else 0.5
 
 
-def compute_metrics(labels: np.ndarray, probs: np.ndarray, threshold: float) -> dict:
-    """Return accuracy, sensitivity, specificity, precision, and F1 for a given threshold."""
-    preds = (probs >= threshold).astype(int)
-    tn, fp, fn, tp = confusion_matrix(labels, preds, labels=[0, 1]).ravel()
-    accuracy    = (tp + tn) / len(labels)
-    sensitivity = tp / (tp + fn) if (tp + fn) > 0 else float("nan")
-    specificity = tn / (tn + fp) if (tn + fp) > 0 else float("nan")
-    precision   = tp / (tp + fp) if (tp + fp) > 0 else float("nan")
-    denom = 2 * tp + fp + fn
-    f1_score    = (2 * tp / denom) if denom > 0 else float("nan")
-    return dict(
-        tp=int(tp), tn=int(tn), fp=int(fp), fn=int(fn),
-        accuracy=accuracy, sensitivity=sensitivity,
-        specificity=specificity, precision=precision, f1_score=f1_score,
-    )
-
-
 def parse_args():
     # Evaluation split and artifact/output controls.
     parser = argparse.ArgumentParser(description="Evaluate a BUS-BRA checkpoint")
