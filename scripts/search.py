@@ -37,7 +37,7 @@ def get_default_param_grids():
     }
 
 
-def run_single_training(model, params, epochs, output_base_dir="runs/search", seed=42, python_cmd=""):
+def run_single_training(model, params, epochs, output_base_dir="runs/search", seed=42, python_cmd="", images_dir=None, masks_dir=None):
     """Run a single training run with given parameters."""
     # Create unique output directory
     param_str = "_".join([f"{k}={v}" for k, v in params.items()])
@@ -55,6 +55,11 @@ def run_single_training(model, params, epochs, output_base_dir="runs/search", se
         "--output_dir", output_dir,
         "--seed", str(seed)
     ]
+
+    if images_dir:
+        cmd += ["--images_dir", images_dir]
+    if masks_dir:
+        cmd += ["--masks_dir", masks_dir]
 
     print(f"Running: {' '.join(cmd)}")
 
@@ -95,7 +100,7 @@ def run_single_training(model, params, epochs, output_base_dir="runs/search", se
         }
 
 
-def run_grid_search(models, param_grid=None, epochs=10, output_base_dir="runs/search", seed=42, python_cmd=""):
+def run_grid_search(models, param_grid=None, epochs=10, output_base_dir="runs/search", seed=42, python_cmd="", images_dir=None, masks_dir=None):
     """Run grid search over specified models and parameter combinations."""
     if param_grid is None:
         param_grid = get_default_param_grids()
@@ -116,7 +121,7 @@ def run_grid_search(models, param_grid=None, epochs=10, output_base_dir="runs/se
             params = dict(zip(param_names, combination))
 
             print(f"\n--- Running {model} with params: {params} ---")
-            result = run_single_training(model, params, epochs, output_base_dir, seed, python_cmd)
+            result = run_single_training(model, params, epochs, output_base_dir, seed, python_cmd, images_dir, masks_dir)
             results.append(result)
 
             if result["success"] and result["best_val_auc"] is not None:
@@ -166,6 +171,10 @@ def main():
     parser.add_argument("--python_cmd", type=str, default="",
                         help="Python command to invoke train.py (default: sys.executable). "
                              "Override on HPC with e.g. 'python3'.")
+    parser.add_argument("--images_dir", type=str, default=None,
+                        help="Path to images directory (required on HPC)")
+    parser.add_argument("--masks_dir", type=str, default=None,
+                        help="Path to masks directory (required on HPC)")
 
     args = parser.parse_args()
 
@@ -180,6 +189,8 @@ def main():
         output_base_dir=args.output_dir,
         seed=args.seed,
         python_cmd=args.python_cmd,
+        images_dir=args.images_dir,
+        masks_dir=args.masks_dir,
     )
 
 
