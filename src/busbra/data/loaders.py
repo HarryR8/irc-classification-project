@@ -42,7 +42,20 @@ from busbra.data.preprocessing import get_preprocess
 # Collate function factory
 # ---------------------------------------------------------------------------
 
-# Collate function to apply model-specific preprocessing inside DataLoader workers.
+class CollateFn:
+    """Picklable collate function — safe for DataLoader multiprocessing workers."""
+
+    def __init__(self, preprocess_fn: Callable):
+        self.preprocess_fn = preprocess_fn
+
+    def __call__(self, samples: list[dict]) -> dict:
+        images    = torch.stack([self.preprocess_fn(s["image"]) for s in samples])
+        labels    = torch.tensor([s["label"] for s in samples], dtype=torch.long)
+        cases     = [s["case"]     for s in samples]
+        image_ids = [s["image_id"] for s in samples]
+        return {"image": images, "label": labels, "case": cases, "image_id": image_ids}
+
+
 def make_collate_fn(preprocess_fn: Callable) -> Callable:
     """Return a collate function that applies `preprocess_fn` to each sample.
 
@@ -61,23 +74,7 @@ def make_collate_fn(preprocess_fn: Callable) -> Callable:
             "case"     : list[str]     length B
             "image_id" : list[str]     length B
     """
-
-    # The collate function is called inside the DataLoader worker process, so it can apply the model-specific preprocessing to each PIL image and stack them into a batch tensor.  Metadata like "case" and "image_id" are collected into lists.
-    def collate(samples: list[dict]) -> dict:
-        # Apply model-specific preprocessing to each PIL image
-        images = torch.stack([preprocess_fn(s["image"]) for s in samples])  # (B,3,H,W)
-        labels = torch.tensor([s["label"] for s in samples], dtype=torch.long)  # (B,)
-        cases    = [s["case"]     for s in samples]
-        image_ids = [s["image_id"] for s in samples]
-
-        return {
-            "image":    images,
-            "label":    labels,
-            "case":     cases,
-            "image_id": image_ids,
-        }
-
-    return collate
+    return CollateFn(preprocess_fn)
 
 
 # ---------------------------------------------------------------------------

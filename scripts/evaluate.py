@@ -77,7 +77,7 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
-from sklearn.metrics import confusion_matrix, roc_auc_score
+from sklearn.metrics import confusion_matrix, roc_auc_score, roc_curve
 
 from busbra.data.loaders import create_dataloaders
 from busbra.training.metrics import find_optimal_thresholds, metrics_at_threshold
@@ -263,6 +263,42 @@ def main():
     print(f"  Act benign        {tn:5d}          {fp:5d}")
     print(f"  Act malignant     {fn:5d}          {tp:5d}")
     print("=" * 52)
+
+    # ── Threshold analysis ────────────────────────────────────────────────────
+    baseline_metrics = metrics_at_threshold(labels, probs, threshold=0.5)
+
+    # Compute optimal thresholds from the designated threshold source split.
+    if threshold_loader is loader:
+        thr_labels, thr_probs = labels, probs
+    else:
+        thr_results = evaluate(model, threshold_loader, criterion, device)
+        thr_labels, thr_probs = thr_results["labels"], thr_results["probs"]
+
+    optimal = find_optimal_thresholds(thr_labels, thr_probs, num_thresholds=args.num_thresholds)
+    metrics_df = optimal["metrics_df"]
+    threshold_candidates = {k: v for k, v in optimal.items() if k != "metrics_df"}
+    threshold_candidate_metrics = {
+        k: (metrics_at_threshold(thr_labels, thr_probs, threshold=optimal[k]) if optimal[k] is not None else None)
+        for k in threshold_candidates
+    }
+
+    # Save threshold sweep CSV.
+    thresholds_csv = (
+        Path(args.thresholds_csv) if args.thresholds_csv
+        else run_dir / f"eval_{args.split}_threshold_sweep.csv"
+    )
+    metrics_df.to_csv(thresholds_csv, index=False)
+
+    # Compute ROC curve for main eval split and save PNG.
+    fpr, tpr, _ = roc_curve(labels, probs)
+    roc_png = (
+        Path(args.roc_png) if args.roc_png
+        else run_dir / f"eval_{args.split}_roc_curve.png"
+    )
+    save_roc_curve(roc_png, args.split, fpr, tpr, auc)
+
+    pr_points = int(metrics_df.shape[0])
+    cm_threshold_points = int(metrics_df.shape[0])
 
     best_threshold = threshold_candidates["by_roc_youden"]
     best_threshold_metrics = threshold_candidate_metrics["by_roc_youden"]

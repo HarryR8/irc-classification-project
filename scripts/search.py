@@ -30,22 +30,23 @@ def get_default_param_grids():
             "batch_size": [16, 32],
         },
         "dinov3_base": {
-            "lr": [1e-5, 5e-5, 1e-4],
+            "lr": [1e-5, 5e-5],
             "weight_decay": [1e-2, 5e-3, 1e-3],
             "batch_size": [16, 32],
         }
     }
 
 
-def run_single_training(model, params, epochs, output_base_dir="runs/search", seed=42):
+def run_single_training(model, params, epochs, output_base_dir="runs/search", seed=42, python_cmd=""):
     """Run a single training run with given parameters."""
     # Create unique output directory
     param_str = "_".join([f"{k}={v}" for k, v in params.items()])
     output_dir = os.path.join(output_base_dir, f"{model}_{param_str}")
 
-    # Build command
-    cmd = [
-        "uv", "run", "python", "scripts/train.py",
+    # Build command — default to sys.executable so the subprocess uses the same
+    # venv that is already active, avoiding "No module named 'busbra'" errors.
+    cmd = (python_cmd.split() if python_cmd else [sys.executable]) + [
+        "scripts/train.py",
         "--model", model,
         "--epochs", str(epochs),
         "--batch_size", str(params["batch_size"]),
@@ -57,17 +58,23 @@ def run_single_training(model, params, epochs, output_base_dir="runs/search", se
 
     print(f"Running: {' '.join(cmd)}")
 
-    # Run training
+    # Inject PYTHONPATH so subprocesses can import busbra from src/ layout
+    repo_root = Path(__file__).parent.parent
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(repo_root / "src") + os.pathsep + env.get("PYTHONPATH", "")
+
+    # Run training, streaming output to terminal
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, cwd=Path(__file__).parent.parent)
+        result = subprocess.run(cmd, cwd=repo_root, env=env)
         success = result.returncode == 0
 
-        # Extract best val AUC from output
+        # Read best val AUC from history.json
         best_auc = None
-        for line in result.stdout.split('\n'):
-            if "Best val AUC =" in line:
-                best_auc = float(line.split("Best val AUC = ")[1].split()[0])
-                break
+        history_path = os.path.join(output_dir, "history.json")
+        if success and os.path.exists(history_path):
+            with open(history_path) as f:
+                history = json.load(f)
+            best_auc = max(e["val_auc"] for e in history)
 
         return {
             "model": model,
@@ -75,8 +82,6 @@ def run_single_training(model, params, epochs, output_base_dir="runs/search", se
             "output_dir": output_dir,
             "success": success,
             "best_val_auc": best_auc,
-            "stdout": result.stdout,
-            "stderr": result.stderr
         }
 
     except Exception as e:
@@ -90,7 +95,7 @@ def run_single_training(model, params, epochs, output_base_dir="runs/search", se
         }
 
 
-def run_grid_search(models, param_grid=None, epochs=10, output_base_dir="runs/search", seed=42):
+def run_grid_search(models, param_grid=None, epochs=10, output_base_dir="runs/search", seed=42, python_cmd=""):
     """Run grid search over specified models and parameter combinations."""
     if param_grid is None:
         param_grid = get_default_param_grids()
@@ -111,7 +116,7 @@ def run_grid_search(models, param_grid=None, epochs=10, output_base_dir="runs/se
             params = dict(zip(param_names, combination))
 
             print(f"\n--- Running {model} with params: {params} ---")
-            result = run_single_training(model, params, epochs, output_base_dir, seed)
+            result = run_single_training(model, params, epochs, output_base_dir, seed, python_cmd)
             results.append(result)
 
             if result["success"] and result["best_val_auc"] is not None:
@@ -158,18 +163,23 @@ def main():
                         help="Base directory for search outputs")
     parser.add_argument("--seed", type=int, default=42,
                         help="Random seed")
+    parser.add_argument("--python_cmd", type=str, default="",
+                        help="Python command to invoke train.py (default: sys.executable). "
+                             "Override on HPC with e.g. 'python3'.")
 
     args = parser.parse_args()
 
     print(f"Starting grid search for models: {args.models}")
     print(f"Epochs per run: {args.epochs}")
     print(f"Output base dir: {args.output_dir}")
+    print(f"Python command: {args.python_cmd or sys.executable}")
 
     run_grid_search(
         models=args.models,
         epochs=args.epochs,
         output_base_dir=args.output_dir,
-        seed=args.seed
+        seed=args.seed,
+        python_cmd=args.python_cmd,
     )
 
 
