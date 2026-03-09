@@ -2,11 +2,11 @@
 CLI entrypoint for training the BUS-BRA breast ultrasound classifier.
 
 Example usage:
-    python scripts/train.py --model resnet18 --epochs 30 --batch_size 32
-    python scripts/train.py --model dinov2_base --epochs 30
-    python scripts/train.py --model resnet18 --lr 5e-5 --epochs 30  # override default lr
+    uv run python scripts/train.py --model resnet18 --epochs 30 --batch_size 32
+    uv run python scripts/train.py --model dinov2_base --epochs 30
+    uv run python scripts/train.py --model resnet18 --lr 5e-5 --epochs 30  # override default lr
+    uv run python scripts/train.py --model clip_vit_base --epochs 30 --images_dir /rds/general/user/zj1024/home/irc-classification-project/data/raw --masks_dir /rds/general/user/zj1024/home/irc-classification-project/data/masks
 """
-
 import argparse
 import json
 import os
@@ -30,6 +30,9 @@ MODEL_TRAINING_CONFIGS = {
     "efficientnet_b0": {"lr": 1e-4, "weight_decay": 1e-5, "warmup_epochs": 0, "freeze_backbone": False},
     "densenet121":     {"lr": 1e-4, "weight_decay": 1e-5, "warmup_epochs": 0, "freeze_backbone": False},
     "dinov2_base":     {"lr": 1e-5, "weight_decay": 1e-2, "warmup_epochs": 5, "freeze_backbone": True},
+    "dinov2_large":    {"lr": 1e-5, "weight_decay": 1e-2, "warmup_epochs": 5, "freeze_backbone": True},
+    "dinov3_base":     {"lr": 1e-5, "weight_decay": 1e-2, "warmup_epochs": 5, "freeze_backbone": True},
+    "dinov3_large":    {"lr": 1e-5, "weight_decay": 1e-2, "warmup_epochs": 5, "freeze_backbone": True},
     "clip_vit_base":   {"lr": 1e-5, "weight_decay": 1e-2, "warmup_epochs": 5, "freeze_backbone": True},
 }
 _DEFAULT_CONFIG = {"lr": 1e-4, "weight_decay": 1e-5, "warmup_epochs": 0, "freeze_backbone": False}

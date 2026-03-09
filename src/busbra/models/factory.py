@@ -19,8 +19,15 @@ Model keys and their preprocessing counterparts
     "resnet50"        → timm / "imagenet_cnn" / embed 2048
     "efficientnet_b0" → timm / "imagenet_cnn" / embed 1280
     "densenet121"     → timm / "imagenet_cnn" / embed 1024
-    "dinov2_base"     → (not yet implemented) / "dinov2" / embed 768
-    "clip_vit_base"   → (not yet implemented) / "clip"   / embed 512
+    "dinov2_small"    → HuggingFace / "dinov2" / embed 384
+    "dinov2_base"     → HuggingFace / "dinov2" / embed 768
+    "dinov2_large"    → HuggingFace / "dinov2" / embed 1024
+    "dinov2_base_reg" → HuggingFace / "dinov2" / embed 768  (with registers)
+    "dinov2_large_reg"→ HuggingFace / "dinov2" / embed 1024 (with registers)
+    "dinov3_small"    → HuggingFace / "dinov3" / embed 384
+    "dinov3_base"     → HuggingFace / "dinov3" / embed 768
+    "dinov3_large"    → HuggingFace / "dinov3" / embed 1024
+    "clip_vit_base"   → open_clip / "clip"   / embed 512
 """
 
 from __future__ import annotations
@@ -68,12 +75,56 @@ MODEL_REGISTRY: dict[str, dict] = {
         "embedding_dim": 1024,
         "preprocess_key": "imagenet_cnn",
     },
-    # --- DINOv2 -----------------------------------------------------------
+    # --- DINOv2 (patch size 14, 2023) via HuggingFace --------------------
+    "dinov2_small": {
+        "type": "dinov2",
+        "hf_name": "facebook/dinov2-small",
+        "embedding_dim": 384,
+        "preprocess_key": "dinov2",
+    },
     "dinov2_base": {
         "type": "dinov2",
-        "hub_name": "dinov2_vitb14",
+        "hf_name": "facebook/dinov2-base",
         "embedding_dim": 768,
         "preprocess_key": "dinov2",
+    },
+    "dinov2_large": {
+        "type": "dinov2",
+        "hf_name": "facebook/dinov2-large",
+        "embedding_dim": 1024,
+        "preprocess_key": "dinov2",
+    },
+    # --- DINOv2 with registers (cleaner attention maps) ------------------
+    "dinov2_base_reg": {
+        "type": "dinov2",
+        "hf_name": "facebook/dinov2-with-registers-base",
+        "embedding_dim": 768,
+        "preprocess_key": "dinov2",
+    },
+    "dinov2_large_reg": {
+        "type": "dinov2",
+        "hf_name": "facebook/dinov2-with-registers-large",
+        "embedding_dim": 1024,
+        "preprocess_key": "dinov2",
+    },
+    # --- DINOv3 (patch size 16, August 2025, SOTA) via HuggingFace ------
+    "dinov3_small": {
+        "type": "dinov3",
+        "hf_name": "facebook/dinov3-vits16-pretrain-lvd1689m",
+        "embedding_dim": 384,
+        "preprocess_key": "dinov3",
+    },
+    "dinov3_base": {
+        "type": "dinov3",
+        "hf_name": "facebook/dinov3-vitb16-pretrain-lvd1689m",
+        "embedding_dim": 768,
+        "preprocess_key": "dinov3",
+    },
+    "dinov3_large": {
+        "type": "dinov3",
+        "hf_name": "facebook/dinov3-vitl16-pretrain-lvd1689m",
+        "embedding_dim": 1024,
+        "preprocess_key": "dinov3",
     },
     # --- CLIP ViT ---------------------------------------------------------
     "clip_vit_base": {
@@ -116,11 +167,48 @@ def _create_timm_backbone(config: dict, pretrained: bool) -> tuple[nn.Module, in
     return model, config["embedding_dim"]
 
 
-def _create_dinov2_backbone(config: dict, pretrained: bool) -> tuple[nn.Module, int]:
-    """Create DINOv2 backbone via torch.hub."""
-    model = torch.hub.load("facebookresearch/dinov2", config["hub_name"])
-    model.eval()  # DINOv2 has no classifier to remove
-    return model, config["embedding_dim"]
+def _create_dino_backbone(config: dict, pretrained: bool) -> tuple[nn.Module, int]:
+    """Create DINOv2 or DINOv3 backbone via HuggingFace transformers.
+
+    Wraps the model to extract the CLS token (position 0) from
+    last_hidden_state, giving a (B, embedding_dim) feature vector.
+    """
+    from transformers import AutoModel
+
+    model = AutoModel.from_pretrained(config["hf_name"])
+    embedding_dim = config["embedding_dim"]
+
+    class DinoBackbone(nn.Module):
+        def __init__(self, model: nn.Module) -> None:
+            super().__init__()
+            self.model = model
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            outputs = self.model(x)
+            return outputs.last_hidden_state[:, 0, :]  # CLS token
+
+    return DinoBackbone(model), embedding_dim
+
+
+class _DINOv3Wrapper(nn.Module):
+    """Wraps HuggingFace DINOv3 AutoModel to return pooler_output as a plain tensor."""
+    def __init__(self, model: nn.Module):
+        super().__init__()
+        self.model = model
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.model(pixel_values=x).pooler_output
+
+
+def _create_dinov3_backbone(config: dict, pretrained: bool) -> tuple[nn.Module, int]:
+    """Create DINOv3 backbone via HuggingFace AutoModel."""
+    from transformers import AutoModel, AutoConfig
+    if pretrained:
+        model = AutoModel.from_pretrained(config["hf_name"])
+    else:
+        cfg = AutoConfig.from_pretrained(config["hf_name"])
+        model = AutoModel.from_config(cfg)
+    return _DINOv3Wrapper(model), config["embedding_dim"]
 
 
 def _create_clip_backbone(config: dict, pretrained: bool) -> tuple[nn.Module, int]:
@@ -129,7 +217,8 @@ def _create_clip_backbone(config: dict, pretrained: bool) -> tuple[nn.Module, in
     Requires: uv pip install -e ".[clip]"
     """
     import open_clip
-    model, _, _ = open_clip.create_model_and_transforms(config["clip_name"])
+    pretrained_tag = "openai" if pretrained else None
+    model, _, _ = open_clip.create_model_and_transforms(config["clip_name"], pretrained=pretrained_tag)
     visual = model.visual  # Extract vision encoder only
     return visual, config["embedding_dim"]
 
@@ -238,9 +327,11 @@ def create_model(
         else:
             return _create_timm_classifier(config, num_classes=num_classes, pretrained=pretrained)
 
-    elif model_type in ("dinov2", "clip"):
+    elif model_type in ("dinov2", "dinov3", "clip"):
         if model_type == "dinov2":
-            backbone, embed_dim = _create_dinov2_backbone(config, pretrained=pretrained)
+            backbone, embed_dim = _create_dino_backbone(config, pretrained=pretrained)
+        elif model_type == "dinov3":
+            backbone, embed_dim = _create_dinov3_backbone(config, pretrained=pretrained)
         else:
             backbone, embed_dim = _create_clip_backbone(config, pretrained=pretrained)
         head = _create_head(
@@ -297,7 +388,9 @@ def create_backbone(
     if model_type == "timm":
         return _create_timm_backbone(config, pretrained=pretrained)
     elif model_type == "dinov2":
-        return _create_dinov2_backbone(config, pretrained=pretrained)
+        return _create_dino_backbone(config, pretrained=pretrained)
+    elif model_type == "dinov3":
+        return _create_dinov3_backbone(config, pretrained=pretrained)
     elif model_type == "clip":
         return _create_clip_backbone(config, pretrained=pretrained)
     else:
@@ -333,8 +426,8 @@ def get_preprocess_key(model_name: str) -> str:
 
     Links models/factory.py to data/preprocessing.py:
         "resnet18"      → "imagenet_cnn"
-        "dinov2_base"   → "dinov2"   (future)
-        "clip_vit_base" → "clip"     (future)
+        "dinov2_base"   → "dinov2"
+        "clip_vit_base" → "clip"
     """
     return get_model_config(model_name)["preprocess_key"]
 
@@ -415,3 +508,24 @@ if __name__ == "__main__":
     # Forward pass shape check
     print(f"\nForward pass: {tuple(x.shape)} → {tuple(out.shape)}")
     print(f"Preprocess key: {get_preprocess_key('resnet18')!r}")
+
+    # Test DINOv2 (requires network access on first run)
+    try:
+        model = create_model("dinov2_base", num_classes=2, freeze_backbone=True)
+        model.eval()
+        with torch.no_grad():
+            out = model(x)
+        print(f"dinov2_base:       {tuple(x.shape)} → {tuple(out.shape)}")
+    except Exception as e:
+        print(f"dinov2_base skipped: {e}")
+
+    # Test DINOv3 (requires transformers with DINOv3 support)
+    try:
+        model = create_model("dinov3_base", num_classes=2, freeze_backbone=True)
+        model.eval()
+        with torch.no_grad():
+            out = model(x)
+        print(f"dinov3_base:       {tuple(x.shape)} → {tuple(out.shape)}")
+    except Exception as e:
+        print(f"dinov3_base skipped: {e}")
+        print("  Install dev transformers if needed: pip install git+https://github.com/huggingface/transformers")
