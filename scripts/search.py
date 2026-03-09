@@ -37,9 +37,11 @@ def get_default_param_grids():
     }
 
 
-def submit_slurm_job(cmd, job_name, logs_dir, slurm_time, slurm_mem, slurm_gres, slurm_partition):
+def submit_slurm_job(cmd, job_name, logs_dir, slurm_time, slurm_mem, slurm_gres, slurm_partition, repo_root):
     """Submit a single training run as a SLURM job via sbatch."""
     import shlex
+    # Fix 3: make log dir absolute so paths are valid from any cwd
+    logs_dir = os.path.abspath(logs_dir)
     os.makedirs(logs_dir, exist_ok=True)
     sbatch_args = [
         "sbatch",
@@ -48,12 +50,16 @@ def submit_slurm_job(cmd, job_name, logs_dir, slurm_time, slurm_mem, slurm_gres,
         f"--error={logs_dir}/{job_name}_%j.err",
         f"--time={slurm_time}",
         f"--mem={slurm_mem}",
+        f"--chdir={repo_root}",           # Fix 1: set working dir to repo root
     ]
     if slurm_gres:
         sbatch_args.append(f"--gres={slurm_gres}")
     if slurm_partition:
         sbatch_args.append(f"--partition={slurm_partition}")
-    sbatch_args += ["--wrap", " ".join(shlex.quote(str(a)) for a in cmd)]
+    # Fix 2: export PYTHONPATH so busbra is importable on the compute node
+    pythonpath_prefix = f"export PYTHONPATH={repo_root / 'src'}:$PYTHONPATH && "
+    wrap_cmd = pythonpath_prefix + " ".join(shlex.quote(str(a)) for a in cmd)
+    sbatch_args += ["--wrap", wrap_cmd]
 
     result = subprocess.run(sbatch_args, capture_output=True, text=True)
     job_id = result.stdout.strip().split()[-1] if result.returncode == 0 else None
@@ -81,13 +87,16 @@ def run_single_training(model, params, epochs, output_base_dir="runs/search", se
         "--seed", str(seed)
     ]
 
+    # Inject PYTHONPATH so subprocesses can import busbra from src/ layout
+    repo_root = Path(__file__).parent.parent
+
     print(f"{'Submitting' if slurm else 'Running'}: {' '.join(cmd)}")
 
     if slurm:
         job_name = f"gs_{model}_{param_str}"[:64]
         logs_dir = os.path.join(output_base_dir, "logs")
         success, job_id, err = submit_slurm_job(
-            cmd, job_name, logs_dir, slurm_time, slurm_mem, slurm_gres, slurm_partition
+            cmd, job_name, logs_dir, slurm_time, slurm_mem, slurm_gres, slurm_partition, repo_root
         )
         return {
             "model": model,
@@ -99,8 +108,6 @@ def run_single_training(model, params, epochs, output_base_dir="runs/search", se
             "error": err if not success else None,
         }
 
-    # Inject PYTHONPATH so subprocesses can import busbra from src/ layout
-    repo_root = Path(__file__).parent.parent
     env = os.environ.copy()
     env["PYTHONPATH"] = str(repo_root / "src") + os.pathsep + env.get("PYTHONPATH", "")
 
