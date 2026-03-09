@@ -107,6 +107,13 @@ def run_grid_search(models, param_grid=None, epochs=10, output_base_dir="runs/se
 
     results = []
 
+    # Pre-compute total number of runs for progress display
+    total_runs = sum(
+        len(list(product(*param_grid[m].values())))
+        for m in models if m in param_grid
+    )
+    run_idx = 0
+
     for model in models:
         if model not in param_grid:
             print(f"Warning: No parameter grid defined for {model}, skipping")
@@ -119,8 +126,11 @@ def run_grid_search(models, param_grid=None, epochs=10, output_base_dir="runs/se
         # Generate all combinations
         for combination in product(*param_values):
             params = dict(zip(param_names, combination))
+            run_idx += 1
 
-            print(f"\n--- Running {model} with params: {params} ---")
+            print(f"\n{'='*50}")
+            print(f"Run {run_idx}/{total_runs} — {model} | {params}")
+            print(f"{'='*50}")
             result = run_single_training(model, params, epochs, output_base_dir, seed, python_cmd, images_dir, masks_dir)
             results.append(result)
 
