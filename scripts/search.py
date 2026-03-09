@@ -37,7 +37,32 @@ def get_default_param_grids():
     }
 
 
-def run_single_training(model, params, epochs, output_base_dir="runs/search", seed=42, python_cmd=""):
+def submit_slurm_job(cmd, job_name, logs_dir, slurm_time, slurm_mem, slurm_gres, slurm_partition):
+    """Submit a single training run as a SLURM job via sbatch."""
+    import shlex
+    os.makedirs(logs_dir, exist_ok=True)
+    sbatch_args = [
+        "sbatch",
+        f"--job-name={job_name}",
+        f"--output={logs_dir}/{job_name}_%j.out",
+        f"--error={logs_dir}/{job_name}_%j.err",
+        f"--time={slurm_time}",
+        f"--mem={slurm_mem}",
+    ]
+    if slurm_gres:
+        sbatch_args.append(f"--gres={slurm_gres}")
+    if slurm_partition:
+        sbatch_args.append(f"--partition={slurm_partition}")
+    sbatch_args += ["--wrap", " ".join(shlex.quote(str(a)) for a in cmd)]
+
+    result = subprocess.run(sbatch_args, capture_output=True, text=True)
+    job_id = result.stdout.strip().split()[-1] if result.returncode == 0 else None
+    return result.returncode == 0, job_id, result.stderr.strip()
+
+
+def run_single_training(model, params, epochs, output_base_dir="runs/search", seed=42, python_cmd="",
+                        slurm=False, slurm_time="4:00:00", slurm_mem="32G",
+                        slurm_gres="gpu:1", slurm_partition=""):
     """Run a single training run with given parameters."""
     # Create unique output directory
     param_str = "_".join([f"{k}={v}" for k, v in params.items()])
@@ -56,7 +81,23 @@ def run_single_training(model, params, epochs, output_base_dir="runs/search", se
         "--seed", str(seed)
     ]
 
-    print(f"Running: {' '.join(cmd)}")
+    print(f"{'Submitting' if slurm else 'Running'}: {' '.join(cmd)}")
+
+    if slurm:
+        job_name = f"gs_{model}_{param_str}"[:64]
+        logs_dir = os.path.join(output_base_dir, "logs")
+        success, job_id, err = submit_slurm_job(
+            cmd, job_name, logs_dir, slurm_time, slurm_mem, slurm_gres, slurm_partition
+        )
+        return {
+            "model": model,
+            "params": params,
+            "output_dir": output_dir,
+            "success": success,
+            "job_id": job_id,
+            "best_val_auc": None,  # not yet available
+            "error": err if not success else None,
+        }
 
     # Inject PYTHONPATH so subprocesses can import busbra from src/ layout
     repo_root = Path(__file__).parent.parent
@@ -95,7 +136,9 @@ def run_single_training(model, params, epochs, output_base_dir="runs/search", se
         }
 
 
-def run_grid_search(models, param_grid=None, epochs=10, output_base_dir="runs/search", seed=42, python_cmd=""):
+def run_grid_search(models, param_grid=None, epochs=10, output_base_dir="runs/search", seed=42, python_cmd="",
+                    slurm=False, slurm_time="4:00:00", slurm_mem="32G",
+                    slurm_gres="gpu:1", slurm_partition=""):
     """Run grid search over specified models and parameter combinations."""
     if param_grid is None:
         param_grid = get_default_param_grids()
@@ -115,11 +158,20 @@ def run_grid_search(models, param_grid=None, epochs=10, output_base_dir="runs/se
         for combination in product(*param_values):
             params = dict(zip(param_names, combination))
 
-            print(f"\n--- Running {model} with params: {params} ---")
-            result = run_single_training(model, params, epochs, output_base_dir, seed, python_cmd)
+            print(f"\n--- {'Submitting' if slurm else 'Running'} {model} with params: {params} ---")
+            result = run_single_training(
+                model, params, epochs, output_base_dir, seed, python_cmd,
+                slurm=slurm, slurm_time=slurm_time, slurm_mem=slurm_mem,
+                slurm_gres=slurm_gres, slurm_partition=slurm_partition,
+            )
             results.append(result)
 
-            if result["success"] and result["best_val_auc"] is not None:
+            if slurm:
+                if result["success"]:
+                    print(f"Submitted job ID: {result['job_id']}")
+                else:
+                    print(f"Submission failed: {result.get('error', 'Unknown error')}")
+            elif result["success"] and result["best_val_auc"] is not None:
                 print(f"Best AUC: {result['best_val_auc']:.4f}")
             else:
                 print(f"Failed: {result.get('error', 'Unknown error')}")
@@ -136,15 +188,22 @@ def run_grid_search(models, param_grid=None, epochs=10, output_base_dir="runs/se
     print("GRID SEARCH SUMMARY")
     print(f"{'='*50}")
 
-    successful_runs = [r for r in results if r["success"] and r["best_val_auc"] is not None]
-    if successful_runs:
-        best_result = max(successful_runs, key=lambda x: x["best_val_auc"])
-        print(f"Best AUC: {best_result['best_val_auc']:.4f}")
-        print(f"Best params: {best_result['params']}")
-        print(f"Model: {best_result['model']}")
-        print(f"Output dir: {best_result['output_dir']}")
+    successful_runs = [r for r in results if r["success"]]
+    if slurm:
+        submitted = [r for r in successful_runs if r.get("job_id")]
+        print(f"Submitted {len(submitted)} SLURM job(s).")
+        for r in submitted:
+            print(f"  job {r['job_id']}: {r['model']} {r['params']}")
     else:
-        print("No successful runs completed.")
+        auc_runs = [r for r in successful_runs if r.get("best_val_auc") is not None]
+        if auc_runs:
+            best_result = max(auc_runs, key=lambda x: x["best_val_auc"])
+            print(f"Best AUC: {best_result['best_val_auc']:.4f}")
+            print(f"Best params: {best_result['params']}")
+            print(f"Model: {best_result['model']}")
+            print(f"Output dir: {best_result['output_dir']}")
+        else:
+            print("No successful runs completed.")
 
     print(f"Total runs: {len(results)}")
     print(f"Successful runs: {len(successful_runs)}")
@@ -166,6 +225,16 @@ def main():
     parser.add_argument("--python_cmd", type=str, default="",
                         help="Python command to invoke train.py (default: sys.executable). "
                              "Override on HPC with e.g. 'python3'.")
+    parser.add_argument("--slurm", action="store_true",
+                        help="Submit each run as a SLURM job instead of running sequentially")
+    parser.add_argument("--slurm_time", type=str, default="4:00:00",
+                        help="SLURM wall-time per job (default: 4:00:00)")
+    parser.add_argument("--slurm_mem", type=str, default="32G",
+                        help="SLURM memory per job (default: 32G)")
+    parser.add_argument("--slurm_gres", type=str, default="gpu:1",
+                        help="SLURM generic resources, e.g. 'gpu:1' (default: gpu:1)")
+    parser.add_argument("--slurm_partition", type=str, default="",
+                        help="SLURM partition/queue name (optional)")
 
     args = parser.parse_args()
 
@@ -173,6 +242,9 @@ def main():
     print(f"Epochs per run: {args.epochs}")
     print(f"Output base dir: {args.output_dir}")
     print(f"Python command: {args.python_cmd or sys.executable}")
+    if args.slurm:
+        print(f"SLURM mode: time={args.slurm_time}, mem={args.slurm_mem}, "
+              f"gres={args.slurm_gres}, partition={args.slurm_partition or '(default)'}")
 
     run_grid_search(
         models=args.models,
@@ -180,6 +252,11 @@ def main():
         output_base_dir=args.output_dir,
         seed=args.seed,
         python_cmd=args.python_cmd,
+        slurm=args.slurm,
+        slurm_time=args.slurm_time,
+        slurm_mem=args.slurm_mem,
+        slurm_gres=args.slurm_gres,
+        slurm_partition=args.slurm_partition,
     )
 
 
