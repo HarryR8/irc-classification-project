@@ -83,6 +83,8 @@ def parse_args():
                         help="Model name from registry")
     parser.add_argument("--epochs", type=int, default=30,
                         help="Number of training epochs")
+    parser.add_argument("--patience", type=int, default=0,
+                        help="Early stopping patience (0 = disabled)")
     parser.add_argument("--batch_size", type=int, default=32,
                         help="Batch size for all dataloaders")
     parser.add_argument("--lr", type=float, default=None,
@@ -152,7 +154,7 @@ def main():
         num_classes=2,
         pretrained=True,
         freeze_backbone=args.freeze_backbone,
-        head_type=args.head_type if args.freeze_backbone else "linear",
+        head_type=args.head_type,
         head_dropout=args.dropout,
     )
     model = model.to(device)
@@ -188,6 +190,7 @@ def main():
     history = []
     best_val_auc = -1.0
     best_epoch = -1
+    patience_counter = 0
 
     for epoch in range(1, args.epochs + 1):
         train_metrics = train_one_epoch(model, train_loader, criterion, optimizer, device)
@@ -215,6 +218,7 @@ def main():
         if val_metrics["auc"] > best_val_auc:
             best_val_auc = val_metrics["auc"]
             best_epoch = epoch
+            patience_counter = 0
             torch.save(
                 {
                     "epoch": epoch,
@@ -224,6 +228,12 @@ def main():
                 },
                 os.path.join(args.output_dir, "best.pt"),
             )
+        else:
+            if args.patience > 0:
+                patience_counter += 1
+                if patience_counter >= args.patience:
+                    print(f"Early stopping at epoch {epoch} (no improvement for {args.patience} epochs)")
+                    break
 
         torch.save(
             {

@@ -43,15 +43,17 @@ The pipeline is intentionally **model-agnostic at the dataset level**:
 4. `create_dataloaders(...)` (`src/busbra/data/loaders.py`) — factory that wires dataset + preprocessor + weighted sampler (class-imbalance compensation) into three DataLoaders. Batch dict keys: `"image"` (B,3,H,W), `"label"` (B,) int64, `"case"` list[str], `"image_id"` list[str].
 
 Model creation goes through `src/busbra/models/factory.py`:
-- `create_model(name, freeze_backbone, head_type)` — returns a full classifier. timm models use the timm-managed head when `freeze_backbone=False`; all others (DINO, CLIP) always use `BackboneWithHead`.
+- `create_model(name, freeze_backbone, head_type)` — returns a full classifier. timm models with `freeze_backbone=False` use the native timm head; all DINO/CLIP models and any frozen-backbone timm model use `BackboneWithHead`.
+- `create_backbone(name)` — returns `(backbone, embed_dim)` for pre-computing embeddings offline.
 - `get_preprocess_key(model_name)` — links a model name to the correct preprocessing key for the DataLoader.
 - `BackboneWithHead` wraps any backbone + head; `get_features(x)` returns raw embeddings.
+- CLIP uses `open_clip` (not HuggingFace). Requires the `clip` optional extra: `uv sync --extra clip`.
 
 Training (`src/busbra/training/trainer.py`) uses `train_one_epoch` / `evaluate`, both returning loss and AUC. The `evaluate` function also returns raw labels, probabilities, and image IDs for threshold analysis.
 
 `scripts/train.py` applies per-model recommended hyperparameters from `MODEL_TRAINING_CONFIGS` (lr, weight_decay, warmup_epochs, freeze_backbone) that CLI flags override. Outputs go to `runs/<model>_<timestamp>/`: `config.json`, `history.json`, `best.pt` (best val AUC), `last.pt`.
 
-`scripts/evaluate.py` loads a run directory, runs inference, and writes `eval_<split>.json`, `eval_<split>_roc_curve.png`, and `eval_<split>_threshold_sweep.csv`. The threshold candidates (Youden J, max F1, sensitivity >= 0.95, specificity >= 0.90) are derived from a configurable sweep and can be selected from val or test splits independently.
+`scripts/evaluate.py` loads a run directory, runs inference, and writes `eval_<split>.json`, `eval_<split>_roc_curve.png`, and `eval_<split>_threshold_sweep.csv`. Key options: `--split` (val/test), `--threshold_split` (which split to derive optimal thresholds from), `--masks_dir` (enables lesion-crop preprocessing). The threshold candidates (Youden J, max F1, sensitivity >= 0.95, specificity >= 0.90) come from `busbra.training.metrics.find_optimal_thresholds` and can be used standalone.
 
 ## Key Invariants
 
