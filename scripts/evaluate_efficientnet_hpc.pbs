@@ -1,0 +1,15 @@
+#!/bin/bash
+#PBS -l select=1:ncpus=4:mem=16gb:ngpus=1
+#PBS -l walltime=01:00:00
+#PBS -N efficientnet_b0_eval
+#PBS -o logs/efficientnet_b0_eval.out
+#PBS -e logs/efficientnet_b0_eval.err
+
+PROJECT_DIR="/rds/general/user/zj1024/home/irc-classification-project"
+cd "$PROJECT_DIR"
+mkdir -p logs
+
+uv run python scripts/evaluate.py \
+  --run_dir runs/efficientnet_b0_lr5e4_wd1e5_bs16_mlp_es \
+  --split test \
+  --images_dir "$PROJECT_DIR/data/raw"
