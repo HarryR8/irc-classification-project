@@ -23,9 +23,19 @@ irc-classification-project/
 ├── .gitignore              # Data, checkpoints, envs excluded
 ├── README.md               # Setup instructions, usage guide
 ├── scripts/
-│   ├── train.py              # ✅ CLI training entrypoint (model, epochs, lr, etc.)
-│   ├── evaluate.py           # ✅ Evaluate a checkpoint (AUC, accuracy, sensitivity, specificity)
-│   └── sanity_dataloader.py  # ✅ Verify batch shapes/dtypes for any backbone
+│   ├── train.py                          # ✅ CLI training entrypoint
+│   ├── evaluate.py                       # ✅ Evaluate a checkpoint
+│   ├── search.py                         # ✅ Grid search over hyperparameters
+│   ├── sanity_dataloader.py              # ✅ Verify batch shapes/dtypes
+│   ├── train_efficientnet_hpc.pbs        # HPC job: train single EfficientNet-B0 config
+│   ├── evaluate_efficientnet_hpc.pbs     # HPC job: evaluate best EfficientNet-B0 config
+│   ├── search_densenet121_hpc.pbs        # HPC job: DenseNet-121 grid search (18 configs)
+│   ├── search_resnet18_hpc.pbs           # HPC job: ResNet-18 grid search (18 configs)
+│   ├── search_resnet50_hpc.pbs           # HPC job: ResNet-50 grid search (18 configs)
+│   ├── search_dinov3_large_hpc_part1.pbs # HPC job: DINOv3-Large grid search (configs 1–6)
+│   ├── search_dinov3_large_hpc_part2.pbs # HPC job: DINOv3-Large grid search (configs 7–12)
+│   ├── search_dinov3_large_hpc_part3.pbs # HPC job: DINOv3-Large grid search (configs 13–18)
+│   └── train_all.sh                      # Convenience shell script: train all models
 ├── src/busbra/
 │   ├── data/
 │   │   ├── prepare_data.py   # ✅ Load CSVs, create patient-level splits
@@ -57,12 +67,12 @@ The data pipeline is **model-agnostic**: the `BUSBRADataset` returns raw `PIL.Im
 
 ### Supported backbones (`model_key`)
 
-| `model_key` | Backbone | Preprocessing | Train augmentation |
+| `model_key` | Backbone family | Preprocessing | Train augmentation |
 |---|---|---|---|
-| `imagenet_cnn` | ResNet18, EfficientNet-B0, DenseNet121 | Letterbox → ImageNet norm | H/V flip, rotate ±30°, brightness/contrast, Gaussian blur, elastic & grid distortion |
-| `clip` | CLIP ViT (`openai/clip-vit-base-patch32`) | HuggingFace `CLIPProcessor` | Horizontal flip |
-| `dinov2` | DINOv2 Base (`facebook/dinov2-base`) | HuggingFace `AutoImageProcessor` | None |
-| `dinov3` | DINOv2 Large (`facebook/dinov2-large`) | HuggingFace `AutoImageProcessor` | None |
+| `imagenet_cnn` | ResNet, EfficientNet, DenseNet | Letterbox → 224px → ImageNet norm | H/V flip, rotate ±30°, brightness/contrast, Gaussian blur, elastic & grid distortion |
+| `clip` | CLIP ViT-B/32 | HuggingFace `CLIPProcessor` | Horizontal flip |
+| `dinov2` | DINOv2 (small/base/large, ±registers) | HuggingFace `AutoImageProcessor` | None |
+| `dinov3` | DINOv3 (small/base/large) | HuggingFace `AutoImageProcessor` | None |
 
 ### Creating DataLoaders
 
@@ -120,14 +130,21 @@ The model factory (`busbra.models`) provides a consistent interface for creating
 
 ### Model registry
 
-| Model name | Backbone | `preprocess_key` | Embed dim | Status |
+| Model name | Backbone | `preprocess_key` | Embed dim | Notes |
 |---|---|---|---|---|
-| `resnet18` | ResNet-18 | `imagenet_cnn` | 512 | ✅ |
-| `resnet50` | ResNet-50 | `imagenet_cnn` | 2048 | ✅ |
-| `efficientnet_b0` | EfficientNet-B0 | `imagenet_cnn` | 1280 | ✅ |
-| `densenet121` | DenseNet-121 | `imagenet_cnn` | 1024 | ✅ |
-| `dinov2_base` | DINOv2 Base | `dinov2` | 768 | ✅ |
-| `clip_vit_base` | CLIP ViT-B/32 | `clip` | 512 | ✅ |
+| `resnet18` | ResNet-18 | `imagenet_cnn` | 512 | |
+| `resnet50` | ResNet-50 | `imagenet_cnn` | 2048 | |
+| `efficientnet_b0` | EfficientNet-B0 | `imagenet_cnn` | 1280 | |
+| `densenet121` | DenseNet-121 | `imagenet_cnn` | 1024 | |
+| `dinov2_small` | DINOv2 ViT-S/14 | `dinov2` | 384 | |
+| `dinov2_base` | DINOv2 ViT-B/14 | `dinov2` | 768 | |
+| `dinov2_large` | DINOv2 ViT-L/14 | `dinov2` | 1024 | |
+| `dinov2_base_reg` | DINOv2 ViT-B/14 + registers | `dinov2` | 768 | |
+| `dinov2_large_reg` | DINOv2 ViT-L/14 + registers | `dinov2` | 1024 | |
+| `dinov3_small` | DINOv3 ViT-S/16 | `dinov3` | 384 | |
+| `dinov3_base` | DINOv3 ViT-B/16 | `dinov3` | 768 | |
+| `dinov3_large` | DINOv3 ViT-L/16 | `dinov3` | 1024 | |
+| `clip_vit_base` | CLIP ViT-B/32 | `clip` | 512 | Requires `uv sync --extra clip` |
 
 ### Usage modes
 
@@ -218,6 +235,8 @@ Key CLI arguments for `train.py`:
 | `--head_type` | `linear` | Head architecture (`linear`, `mlp`, `mlp_deep`) |
 | `--split_file` | `data/splits/splits.csv` | Path to splits CSV |
 | `--images_dir` | `data/raw` | Directory containing image files |
+| `--patience` | 0 | Early stopping patience; 0 disables |
+| `--output_dir` | `runs/<model>_<timestamp>` | Custom output directory |
 
 ### 5) Evaluate a trained model
 ```bash
@@ -257,6 +276,38 @@ Four clinically motivated threshold candidates are reported (selected from the s
 | Max F1 | maximise F1 score |
 | Sensitivity ≥ 0.95 | highest specificity subject to sensitivity ≥ 0.95 |
 | Specificity ≥ 0.90 | highest sensitivity subject to specificity ≥ 0.90 |
+
+### 6) Grid search
+
+`search.py` sweeps all combinations of `lr`, `weight_decay`, and `batch_size` from a fixed grid for one or more models.
+
+```bash
+# Quick local test (5 epochs, all configs for resnet18)
+uv run python scripts/search.py --models resnet18 --epochs 5 --head_type mlp
+
+# Large model: split into 3 partitions (as done in HPC PBS scripts)
+# Run partition 1 of 3 (6 configs out of 18)
+uv run python scripts/search.py --models dinov3_large --epochs 100 \
+    --head_type mlp --dropout 0.5 --patience 10 --freeze_backbone \
+    --part 1 --num_parts 3 --output_dir runs/search_dinov3_large
+```
+
+Results are saved to `<output_dir>/grid_search_results.json`. HPC PBS scripts for each model are in `scripts/`.
+
+Key CLI arguments for `search.py`:
+
+| Argument | Default | Description |
+|---|---|---|
+| `--models` | `efficientnet_b0 dinov3_base` | One or more model names |
+| `--epochs` | 10 | Epochs per config |
+| `--head_type` | `linear` | Head type (`linear`, `mlp`, `mlp_deep`) |
+| `--dropout` | 0.3 | Dropout for MLP head |
+| `--patience` | 0 | Early stopping (0 = disabled) |
+| `--freeze_backbone` | off | Freeze backbone, train head only |
+| `--part` | 1 | Partition index (1-indexed) |
+| `--num_parts` | 1 | Total partitions (1 = no split) |
+| `--output_dir` | `runs/search` | Base directory for outputs |
+| `--images_dir` | None | Path to images (required on HPC) |
 
 The metrics library (`busbra.training.metrics`) can also be used standalone:
 
