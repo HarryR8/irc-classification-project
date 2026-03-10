@@ -42,9 +42,30 @@ from busbra.data.preprocessing import get_preprocess
 # Collate function factory
 # ---------------------------------------------------------------------------
 
-# Collate function to apply model-specific preprocessing inside DataLoader workers.
-def make_collate_fn(preprocess_fn: Callable) -> Callable:
-    """Return a collate function that applies `preprocess_fn` to each sample.
+class _CollateFn:
+    """Picklable collate function that applies model-specific preprocessing.
+
+    Using a class instead of a closure ensures this object can be pickled by
+    Python 3.13+ multiprocessing (spawn/forkserver start methods), which cannot
+    pickle local functions returned from factory functions.
+    """
+
+    def __init__(self, preprocess_fn: Callable) -> None:
+        self.preprocess_fn = preprocess_fn
+
+    def __call__(self, samples: list[dict]) -> dict:
+        images = torch.stack([self.preprocess_fn(s["image"]) for s in samples])
+        labels = torch.tensor([s["label"] for s in samples], dtype=torch.long)
+        return {
+            "image":    images,
+            "label":    labels,
+            "case":     [s["case"]     for s in samples],
+            "image_id": [s["image_id"] for s in samples],
+        }
+
+
+def make_collate_fn(preprocess_fn: Callable) -> "_CollateFn":
+    """Return a picklable collate function that applies `preprocess_fn` to each sample.
 
     Parameters
     ----------
@@ -53,31 +74,15 @@ def make_collate_fn(preprocess_fn: Callable) -> Callable:
 
     Returns
     -------
-    Callable[list[dict], dict]
-        A collate function compatible with torch DataLoader's
+    _CollateFn
+        A collate callable compatible with torch DataLoader's
         ``collate_fn`` argument.  The returned batch dict has:
             "image"    : (B, 3, H, W)  float32 tensor
             "label"    : (B,)          int64 tensor
             "case"     : list[str]     length B
             "image_id" : list[str]     length B
     """
-
-    # The collate function is called inside the DataLoader worker process, so it can apply the model-specific preprocessing to each PIL image and stack them into a batch tensor.  Metadata like "case" and "image_id" are collected into lists.
-    def collate(samples: list[dict]) -> dict:
-        # Apply model-specific preprocessing to each PIL image
-        images = torch.stack([preprocess_fn(s["image"]) for s in samples])  # (B,3,H,W)
-        labels = torch.tensor([s["label"] for s in samples], dtype=torch.long)  # (B,)
-        cases    = [s["case"]     for s in samples]
-        image_ids = [s["image_id"] for s in samples]
-
-        return {
-            "image":    images,
-            "label":    labels,
-            "case":     cases,
-            "image_id": image_ids,
-        }
-
-    return collate
+    return _CollateFn(preprocess_fn)
 
 
 # ---------------------------------------------------------------------------

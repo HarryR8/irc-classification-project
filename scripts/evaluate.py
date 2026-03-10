@@ -114,6 +114,8 @@ def parse_args():
         help="Split used to choose optimal thresholds. 'same' uses --split.",
     )
     parser.add_argument("--num_thresholds", type=int, default=201)
+    parser.add_argument("--num_workers", type=int, default=None,
+                        help="DataLoader workers (overrides value stored in config.json)")
     parser.add_argument(
         "--thresholds_csv",
         type=str,
@@ -208,7 +210,7 @@ def main():
         images_dir=args.images_dir,
         model_key=preprocess_key,
         batch_size=config.get("batch_size", 32),
-        num_workers=config.get("num_workers", 4),
+        num_workers=args.num_workers if args.num_workers is not None else config.get("num_workers", 4),
         masks_dir=args.masks_dir,
     )
     loader = val_loader if args.split == "val" else test_loader

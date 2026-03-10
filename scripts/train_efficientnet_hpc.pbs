@@ -1,0 +1,61 @@
+#!/bin/bash
+#PBS -l select=1:ncpus=4:mem=32gb:ngpus=1
+#PBS -l walltime=12:00:00
+#PBS -N efficientnet_b0_best
+#PBS -o logs/efficientnet_b0_best.out
+#PBS -e logs/efficientnet_b0_best.err
+
+# --- Customise these before submitting ---
+PROJECT_DIR="/rds/general/user/zj1024/home/irc-classification-project"
+IMAGES_DIR="$PROJECT_DIR/data/raw"
+# MASKS_DIR="$PROJECT_DIR/data/masks"  # uncomment to enable lesion-crop preprocessing
+
+# Shared training settings
+TRAIN="uv run python scripts/train.py"
+MODEL="efficientnet_b0"
+EPOCHS=100
+PATIENCE=15
+DROPOUT=0.4
+HEAD="mlp"
+
+cd "$PROJECT_DIR"
+mkdir -p logs
+
+echo "=== EfficientNet-B0 best-config reruns with MLP head + early stopping ==="
+echo "Started: $(date)"
+
+# Rank 1 — lr=0.0005, wd=1e-05, batch=32  (val AUC 0.8677)
+echo ""
+echo ">>> Config 1/3: lr=5e-4, wd=1e-5, batch=32"
+$TRAIN --model $MODEL \
+       --lr 5e-4 --weight_decay 1e-5 --batch_size 32 \
+       --head_type $HEAD --dropout $DROPOUT \
+       --patience $PATIENCE --epochs $EPOCHS \
+       --images_dir "$IMAGES_DIR" \
+       --output_dir runs/efficientnet_b0_lr5e4_wd1e5_bs32_mlp_es
+# To add lesion-crop preprocessing, append: --masks_dir "$MASKS_DIR"
+
+# Rank 2 — lr=0.0005, wd=1e-05, batch=16  (val AUC 0.8200)
+echo ""
+echo ">>> Config 2/3: lr=5e-4, wd=1e-5, batch=16"
+$TRAIN --model $MODEL \
+       --lr 5e-4 --weight_decay 1e-5 --batch_size 16 \
+       --head_type $HEAD --dropout $DROPOUT \
+       --patience $PATIENCE --epochs $EPOCHS \
+       --images_dir "$IMAGES_DIR" \
+       --output_dir runs/efficientnet_b0_lr5e4_wd1e5_bs16_mlp_es
+# To add lesion-crop preprocessing, append: --masks_dir "$MASKS_DIR"
+
+# Rank 3 — lr=0.0005, wd=1e-04, batch=16  (val AUC 0.8159)
+echo ""
+echo ">>> Config 3/3: lr=5e-4, wd=1e-4, batch=16"
+$TRAIN --model $MODEL \
+       --lr 5e-4 --weight_decay 1e-4 --batch_size 16 \
+       --head_type $HEAD --dropout $DROPOUT \
+       --patience $PATIENCE --epochs $EPOCHS \
+       --images_dir "$IMAGES_DIR" \
+       --output_dir runs/efficientnet_b0_lr5e4_wd1e4_bs16_mlp_es
+# To add lesion-crop preprocessing, append: --masks_dir "$MASKS_DIR"
+
+echo ""
+echo "=== All done: $(date) ==="
