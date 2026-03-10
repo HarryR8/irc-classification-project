@@ -18,6 +18,7 @@ Supported model_keys
 
 from __future__ import annotations
 
+import random
 import warnings
 from pathlib import Path
 from typing import Callable
@@ -88,6 +89,38 @@ def load_and_crop_to_lesion(
 
 
 # ---------------------------------------------------------------------------
+# Picklable callable classes for DataLoader multiprocessing workers
+# ---------------------------------------------------------------------------
+
+class _ImagenetCNNPreprocess:
+    def __init__(self, pipeline):
+        self.pipeline = pipeline
+
+    def __call__(self, img):
+        return self.pipeline(image=_pil_to_numpy(img))["image"]
+
+
+class _CLIPPreprocess:
+    def __init__(self, processor, augment: bool):
+        self.processor = processor
+        self.augment = augment
+
+    def __call__(self, img):
+        if self.augment and random.random() < 0.5:
+            import torchvision.transforms.functional as TF
+            img = TF.hflip(img)
+        return self.processor(images=img, return_tensors="pt")["pixel_values"][0]
+
+
+class _DinoPreprocess:
+    def __init__(self, processor):
+        self.processor = processor
+
+    def __call__(self, img):
+        return self.processor(images=img, return_tensors="pt")["pixel_values"][0]
+
+
+# ---------------------------------------------------------------------------
 # imagenet_cnn: Albumentations letterbox + ImageNet normalisation
 # ---------------------------------------------------------------------------
 
@@ -134,11 +167,7 @@ def _make_imagenet_cnn_preprocess(split: str, size: int) -> Callable:
             ToTensorV2(),
         ])
 
-    def preprocess(img: Image.Image) -> torch.FloatTensor:
-        arr = _pil_to_numpy(img)
-        return pipeline(image=arr)["image"]  # (3, H, W) float32
-
-    return preprocess
+    return _ImagenetCNNPreprocess(pipeline)
 
 
 # ---------------------------------------------------------------------------
@@ -162,23 +191,7 @@ def _make_clip_preprocess(split: str, size: int, model_name: str = _CLIP_DEFAULT
     from transformers import CLIPProcessor
 
     processor = CLIPProcessor.from_pretrained(model_name)
-
-    if split == "train":
-        import torchvision.transforms.functional as TF
-        import random
-
-        def preprocess(img: Image.Image) -> torch.FloatTensor:
-            # Minimal augmentation: random horizontal flip only
-            if random.random() < 0.5:
-                img = TF.hflip(img)
-            out = processor(images=img, return_tensors="pt")
-            return out["pixel_values"][0]  # (3, H, W)
-    else:
-        def preprocess(img: Image.Image) -> torch.FloatTensor:
-            out = processor(images=img, return_tensors="pt")
-            return out["pixel_values"][0]  # (3, H, W)
-
-    return preprocess
+    return _CLIPPreprocess(processor, augment=(split == "train"))
 
 
 # ---------------------------------------------------------------------------
@@ -203,12 +216,7 @@ def _make_dino_preprocess(model_key: str, split: str, size: int) -> Callable:
 
     checkpoint = _DINO_CHECKPOINTS[model_key]
     processor = AutoImageProcessor.from_pretrained(checkpoint)
-
-    def preprocess(img: Image.Image) -> torch.FloatTensor:
-        out = processor(images=img, return_tensors="pt")
-        return out["pixel_values"][0]  # (3, H, W)
-
-    return preprocess
+    return _DinoPreprocess(processor)
 
 
 # ---------------------------------------------------------------------------
