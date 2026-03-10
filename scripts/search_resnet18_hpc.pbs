@@ -1,0 +1,29 @@
+#!/bin/bash
+#PBS -l select=1:ncpus=4:mem=32gb:ngpus=1
+#PBS -l walltime=02:00:00
+#PBS -N resnet18_search
+#PBS -o logs/resnet18_search.out
+#PBS -e logs/resnet18_search.err
+
+# --- Customise these before submitting ---
+PROJECT_DIR="/rds/general/user/zj1024/home/irc-classification-project"
+IMAGES_DIR="$PROJECT_DIR/data/raw"
+
+cd "$PROJECT_DIR"
+mkdir -p logs
+
+echo "=== ResNet-18 grid search (18 configs) ==="
+echo "Started: $(date)"
+
+uv run python scripts/search.py \
+    --models resnet18 \
+    --epochs 100 \
+    --head_type mlp \
+    --dropout 0.4 \
+    --patience 15 \
+    --output_dir runs/search_resnet18 \
+    --images_dir "$IMAGES_DIR" \
+    --python_cmd "uv run python"
+
+echo ""
+echo "=== All done: $(date) ==="

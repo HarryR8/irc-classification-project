@@ -14,6 +14,7 @@ Example usage:
 
 import argparse
 import json
+import math
 import os
 import subprocess
 import sys
@@ -38,7 +39,22 @@ def get_default_param_grids():
             "lr": [1e-5, 5e-5],
             "weight_decay": [1e-2, 5e-3, 1e-3],
             "batch_size": [16, 32],
-        }
+        },
+        "resnet18": {
+            "lr": [1e-4, 5e-4, 1e-3],
+            "weight_decay": [1e-5, 1e-4, 1e-3],
+            "batch_size": [16, 32],
+        },
+        "resnet50": {
+            "lr": [1e-4, 5e-4, 1e-3],
+            "weight_decay": [1e-5, 1e-4, 1e-3],
+            "batch_size": [16, 32],
+        },
+        "dinov3_large": {
+            "lr": [5e-6, 1e-5, 5e-5],
+            "weight_decay": [1e-3, 1e-2, 5e-2],
+            "batch_size": [8, 16],
+        },
     }
 
 
@@ -74,6 +90,7 @@ def submit_slurm_job(cmd, job_name, logs_dir, slurm_time, slurm_mem, slurm_gres,
 def run_single_training(model, params, epochs, output_base_dir="runs/search", seed=42, python_cmd="",
                         images_dir=None, masks_dir=None,
                         head_type="linear", dropout=0.3, patience=0,
+                        freeze_backbone=False,
                         slurm=False, slurm_time="4:00:00", slurm_mem="32G",
                         slurm_gres="gpu:1", slurm_partition=""):
     """Run a single training run with given parameters."""
@@ -98,6 +115,8 @@ def run_single_training(model, params, epochs, output_base_dir="runs/search", se
 
     if patience > 0:
         cmd += ["--patience", str(patience)]
+    if freeze_backbone:
+        cmd += ["--freeze_backbone"]
     if images_dir:
         cmd += ["--images_dir", images_dir]
     if masks_dir:
@@ -162,6 +181,8 @@ def run_single_training(model, params, epochs, output_base_dir="runs/search", se
 def run_grid_search(models, param_grid=None, epochs=10, output_base_dir="runs/search", seed=42, python_cmd="",
                     images_dir=None, masks_dir=None,
                     head_type="linear", dropout=0.3, patience=0,
+                    freeze_backbone=False,
+                    part=1, num_parts=1,
                     slurm=False, slurm_time="4:00:00", slurm_mem="32G",
                     slurm_gres="gpu:1", slurm_partition=""):
     """Run grid search over specified models and parameter combinations."""
@@ -170,11 +191,14 @@ def run_grid_search(models, param_grid=None, epochs=10, output_base_dir="runs/se
 
     results = []
 
-    # Pre-compute total number of runs for progress display
-    total_runs = sum(
-        len(list(product(*param_grid[m].values())))
-        for m in models if m in param_grid
-    )
+    # Pre-compute total number of runs for progress display (after partitioning)
+    total_runs = 0
+    for m in models:
+        if m in param_grid:
+            all_combos = list(product(*param_grid[m].values()))
+            chunk_size = math.ceil(len(all_combos) / num_parts)
+            start = (part - 1) * chunk_size
+            total_runs += len(all_combos[start:start + chunk_size])
     run_idx = 0
 
     for model in models:
@@ -186,8 +210,13 @@ def run_grid_search(models, param_grid=None, epochs=10, output_base_dir="runs/se
         param_names = list(grid.keys())
         param_values = list(grid.values())
 
-        # Generate all combinations
-        for combination in product(*param_values):
+        # Generate all combinations then slice to the requested partition
+        all_combos = list(product(*param_values))
+        chunk_size = math.ceil(len(all_combos) / num_parts)
+        start = (part - 1) * chunk_size
+        combos_to_run = all_combos[start:start + chunk_size]
+
+        for combination in combos_to_run:
             params = dict(zip(param_names, combination))
             run_idx += 1
 
@@ -195,6 +224,7 @@ def run_grid_search(models, param_grid=None, epochs=10, output_base_dir="runs/se
             result = run_single_training(
                 model, params, epochs, output_base_dir, seed, python_cmd, images_dir, masks_dir,
                 head_type=head_type, dropout=dropout, patience=patience,
+                freeze_backbone=freeze_backbone,
                 slurm=slurm, slurm_time=slurm_time, slurm_mem=slurm_mem,
                 slurm_gres=slurm_gres, slurm_partition=slurm_partition,
             )
@@ -279,6 +309,12 @@ def main():
                         help="SLURM generic resources, e.g. 'gpu:1' (default: gpu:1)")
     parser.add_argument("--slurm_partition", type=str, default="",
                         help="SLURM partition/queue name (optional)")
+    parser.add_argument("--freeze_backbone", action="store_true",
+                        help="Freeze backbone weights during training (default: False)")
+    parser.add_argument("--part", type=int, default=1,
+                        help="Which partition to run (1-indexed). Use with --num_parts.")
+    parser.add_argument("--num_parts", type=int, default=1,
+                        help="Total number of partitions to split the config list into (default: 1 = no split).")
 
     args = parser.parse_args()
 
@@ -286,6 +322,9 @@ def main():
     print(f"Epochs per run: {args.epochs}")
     print(f"Output base dir: {args.output_dir}")
     print(f"Head type: {args.head_type}, dropout: {args.dropout}, patience: {args.patience}")
+    print(f"Freeze backbone: {args.freeze_backbone}")
+    if args.num_parts > 1:
+        print(f"Partition: {args.part}/{args.num_parts}")
     print(f"Python command: {args.python_cmd or sys.executable}")
     if args.slurm:
         print(f"SLURM mode: time={args.slurm_time}, mem={args.slurm_mem}, "
@@ -302,6 +341,9 @@ def main():
         head_type=args.head_type,
         dropout=args.dropout,
         patience=args.patience,
+        freeze_backbone=args.freeze_backbone,
+        part=args.part,
+        num_parts=args.num_parts,
         slurm=args.slurm,
         slurm_time=args.slurm_time,
         slurm_mem=args.slurm_mem,
