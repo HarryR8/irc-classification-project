@@ -1,0 +1,30 @@
+#!/bin/bash
+#PBS -l select=1:ncpus=4:mem=32gb:ngpus=1
+#PBS -l walltime=48:00:00
+#PBS -N clip_search
+#PBS -o logs/clip_search.out
+#PBS -e logs/clip_search.err
+
+# --- Customise these before submitting ---
+PROJECT_DIR="/rds/general/user/zj1024/home/irc-classification-project"
+IMAGES_DIR="$PROJECT_DIR/data/raw"
+
+cd "$PROJECT_DIR"
+mkdir -p logs
+
+echo "=== CLIP ViT-B/32 grid search (18 configs) ==="
+echo "Started: $(date)"
+
+uv run python scripts/search.py \
+    --models clip_vit_base \
+    --epochs 100 \
+    --head_type mlp \
+    --dropout 0.4 \
+    --patience 15 \
+    --freeze_backbone \
+    --output_dir runs/search_clip \
+    --images_dir "$IMAGES_DIR" \
+    --python_cmd "uv run python"
+
+echo ""
+echo "=== All done: $(date) ==="

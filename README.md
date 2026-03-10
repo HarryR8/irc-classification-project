@@ -32,6 +32,7 @@ irc-classification-project/
 │   ├── search_densenet121_hpc.pbs        # HPC job: DenseNet-121 grid search (18 configs)
 │   ├── search_resnet18_hpc.pbs           # HPC job: ResNet-18 grid search (18 configs)
 │   ├── search_resnet50_hpc.pbs           # HPC job: ResNet-50 grid search (18 configs)
+│   ├── search_clip_hpc.pbs               # HPC job: CLIP ViT-B/32 grid search (18 configs)
 │   ├── search_dinov3_large_hpc_part1.pbs # HPC job: DINOv3-Large grid search (configs 1–6)
 │   ├── search_dinov3_large_hpc_part2.pbs # HPC job: DINOv3-Large grid search (configs 7–12)
 │   ├── search_dinov3_large_hpc_part3.pbs # HPC job: DINOv3-Large grid search (configs 13–18)
