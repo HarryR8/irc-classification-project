@@ -91,7 +91,7 @@ def parse_args():
                         help="Learning rate for AdamW (default: per-model config)")
     parser.add_argument("--weight_decay", type=float, default=None,
                         help="Weight decay for AdamW (default: per-model config)")
-    parser.add_argument("--freeze_backbone", action="store_true", default=None,
+    parser.add_argument("--freeze_backbone", action="store_true", default=False,
                         help="Freeze backbone weights (only train head)")
     parser.add_argument("--head_type", type=str, default="linear",
                         choices=["linear", "mlp"],
