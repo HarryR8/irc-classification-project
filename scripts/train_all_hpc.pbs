@@ -1,0 +1,27 @@
+#!/bin/bash
+#PBS -l select=1:ncpus=4:mem=32gb:ngpus=1
+#PBS -l walltime=24:00:00
+#PBS -N train_all
+#PBS -o logs/train_all.out
+#PBS -e logs/train_all.err
+
+# --- Customise before submitting ---
+PROJECT_DIR="/rds/general/user/zj1024/home/irc-classification-project"
+MASKS_DIR="$PROJECT_DIR/data/masks"
+
+cd "$PROJECT_DIR"
+
+# HuggingFace token — required for gated DINOv3 models
+export HF_TOKEN=$(cat ~/.hf_token)
+
+mkdir -p logs
+
+echo "=== train_all_hpc.pbs ==="
+echo "Started: $(date)"
+echo "PROJECT_DIR: $PROJECT_DIR"
+echo "MASKS_DIR:   $MASKS_DIR"
+
+bash scripts/train_all.sh --masks_dir "$MASKS_DIR"
+
+echo ""
+echo "=== All done: $(date) ==="
