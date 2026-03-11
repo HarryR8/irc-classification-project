@@ -11,7 +11,11 @@ IMAGES_DIR="$PROJECT_DIR/data/raw"
 
 cd "$PROJECT_DIR"
 
-# Load HuggingFace token for gated model access
+# Load HuggingFace token for gated model access (fail fast if missing)
+if [[ ! -f ~/.hf_token ]]; then
+    echo "ERROR: ~/.hf_token not found — create it before submitting this job" >&2
+    exit 1
+fi
 export HF_TOKEN=$(cat ~/.hf_token)
 
 mkdir -p logs
