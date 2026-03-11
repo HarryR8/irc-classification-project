@@ -10,6 +10,10 @@ PROJECT_DIR="/rds/general/user/zj1024/home/irc-classification-project"
 IMAGES_DIR="$PROJECT_DIR/data/raw"
 
 cd "$PROJECT_DIR"
+
+# Load HuggingFace token for gated model access
+export HF_TOKEN=$(cat ~/.hf_token)
+
 mkdir -p logs
 
 echo "=== DINOv3-Large grid search part 1/3 (configs 1-6 of 18) ==="
