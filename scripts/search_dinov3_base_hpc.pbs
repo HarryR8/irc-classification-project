@@ -1,0 +1,34 @@
+#!/bin/bash
+#PBS -l select=1:ncpus=4:mem=32gb:ngpus=1
+#PBS -l walltime=08:00:00
+#PBS -N dinov3_base_search
+#PBS -o logs/dinov3_base_search.out
+#PBS -e logs/dinov3_base_search.err
+
+# --- Customise these before submitting ---
+PROJECT_DIR="/rds/general/user/zj1024/home/irc-classification-project"
+IMAGES_DIR="$PROJECT_DIR/data/raw"
+
+cd "$PROJECT_DIR"
+
+# Load HuggingFace token for gated model access
+export HF_TOKEN=$(cat ~/.hf_token)
+
+mkdir -p logs
+
+echo "=== DINOv3-Base grid search (12 configs) ==="
+echo "Started: $(date)"
+
+uv run python scripts/search.py \
+    --models dinov3_base \
+    --epochs 100 \
+    --head_type mlp \
+    --dropout 0.5 \
+    --patience 10 \
+    --freeze_backbone \
+    --output_dir runs/search_dinov3_base \
+    --images_dir "$IMAGES_DIR" \
+    --python_cmd "uv run python"
+
+echo ""
+echo "=== All done: $(date) ==="
