@@ -1,6 +1,6 @@
 #!/bin/bash
 #PBS -l select=1:ncpus=4:mem=32gb:ngpus=1
-#PBS -l walltime=24:00:00
+#PBS -l walltime=48:00:00
 #PBS -N train_all
 # Runs train_all.sh — full comparison matrix (9 models × up to 3 conditions).
 # Models: resnet18, resnet50, densenet121, clip_vit_base, dinov2_base, dinov2_large,
