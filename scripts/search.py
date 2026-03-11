@@ -60,6 +60,16 @@ def get_default_param_grids():
             "weight_decay": [1e-5, 1e-4, 1e-3],
             "batch_size": [16, 32],
         },
+        "dinov2_base": {
+            "lr": [1e-5, 5e-5],
+            "weight_decay": [1e-2, 5e-3, 1e-3],
+            "batch_size": [16, 32],
+        },
+        "dinov2_large": {
+            "lr": [5e-6, 1e-5, 5e-5],
+            "weight_decay": [1e-3, 1e-2, 5e-2],
+            "batch_size": [8, 16],
+        },
     }
 
 

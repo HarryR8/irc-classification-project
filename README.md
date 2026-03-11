@@ -194,7 +194,25 @@ cd irc-classification-project
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
-### 3) Create virtual environment + install dependencies
+### 3) HuggingFace token (DINOv3 models only)
+
+DINOv3 checkpoints require a HuggingFace account token. Skip this step if you only use CNN or DINOv2 backbones.
+
+**Option A — environment variable (interactive sessions / Jupyter):**
+```bash
+export HF_TOKEN="hf_your_token_here"
+```
+
+**Option B — token file (recommended for HPC / PBS jobs):**
+```bash
+echo "hf_your_token_here" > ~/.hf_token
+chmod 600 ~/.hf_token
+```
+PBS scripts automatically load the token with `export HF_TOKEN=$(cat ~/.hf_token)`.
+
+Get your token at https://huggingface.co/settings/tokens (read-only scope is sufficient).
+
+### 4) Create virtual environment + install dependencies
 ```bash
 uv sync
 ```
