@@ -12,7 +12,7 @@ Build a **reproducible** ML pipeline to classify **benign vs malignant** tumours
 
 ## Approach (preliminary)
 - Baseline: transfer learning CNN (ResNet18, EfficientNet-B0, DenseNet121)
-- ViT backbones: DINOv2 (Base / Large) and CLIP via HuggingFace
+- ViT backbones: DINOv2 (Base / Large, ±registers), DINOv3 (Small / Base / Large), and CLIP via HuggingFace
 - Mask-aware (extension): ROI-cropped classification (ROI-only vs ROI+context)
 - Evaluation: ROC-AUC/PR-AUC/F1 + confusion matrix (focus on malignant recall)
 
@@ -23,20 +23,12 @@ irc-classification-project/
 ├── .gitignore              # Data, checkpoints, envs excluded
 ├── README.md               # Setup instructions, usage guide
 ├── scripts/
-│   ├── train.py                          # ✅ CLI training entrypoint
-│   ├── evaluate.py                       # ✅ Evaluate a checkpoint
-│   ├── search.py                         # ✅ Grid search over hyperparameters
-│   ├── sanity_dataloader.py              # ✅ Verify batch shapes/dtypes
-│   ├── train_efficientnet_hpc.pbs        # HPC job: train single EfficientNet-B0 config
-│   ├── evaluate_efficientnet_hpc.pbs     # HPC job: evaluate best EfficientNet-B0 config
-│   ├── search_densenet121_hpc.pbs        # HPC job: DenseNet-121 grid search (18 configs)
-│   ├── search_resnet18_hpc.pbs           # HPC job: ResNet-18 grid search (18 configs)
-│   ├── search_resnet50_hpc.pbs           # HPC job: ResNet-50 grid search (18 configs)
-│   ├── search_clip_hpc.pbs               # HPC job: CLIP ViT-B/32 grid search (18 configs)
-│   ├── search_dinov3_large_hpc_part1.pbs # HPC job: DINOv3-Large grid search (configs 1–6)
-│   ├── search_dinov3_large_hpc_part2.pbs # HPC job: DINOv3-Large grid search (configs 7–12)
-│   ├── search_dinov3_large_hpc_part3.pbs # HPC job: DINOv3-Large grid search (configs 13–18)
-│   └── train_all.sh                      # Convenience shell script: train all models
+│   ├── train.py              # ✅ CLI training entrypoint
+│   ├── evaluate.py           # ✅ Evaluate a checkpoint
+│   ├── search.py             # ✅ Grid search over hyperparameters
+│   ├── sanity_dataloader.py  # ✅ Verify batch shapes/dtypes
+│   ├── ensemble_eval.py      # ✅ Ensemble inference across multiple checkpoints
+│   └── hpc/                  # HPC PBS job scripts and shell convenience wrappers
 ├── src/busbra/
 │   ├── data/
 │   │   ├── prepare_data.py   # ✅ Load CSVs, create patient-level splits
@@ -111,6 +103,12 @@ uv run python scripts/sanity_dataloader.py --model_key clip \
 
 # DINOv2 (downloads ~300 MB checkpoint on first run, cached afterward)
 uv run python scripts/sanity_dataloader.py --model_key dinov2 \
+  --split_file data/splits/splits.csv \
+  --images_dir data/raw
+
+# DINOv3 (downloads ~300 MB checkpoint on first run, cached afterward)
+# Requires HF_TOKEN and approved access — see §3 "HuggingFace token" above.
+uv run python scripts/sanity_dataloader.py --model_key dinov3 \
   --split_file data/splits/splits.csv \
   --images_dir data/raw
 ```
@@ -196,7 +194,16 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 ### 3) HuggingFace token (DINOv3 models only)
 
-DINOv3 checkpoints require a HuggingFace account token. Skip this step if you only use CNN or DINOv2 backbones.
+DINOv3 checkpoints are gated on HuggingFace and require three one-time steps. Skip entirely if you only use CNN or DINOv2 backbones.
+
+**Step 1 — Request access** to each DINOv3 checkpoint repo (click "Access repository" and accept Meta's licence):
+- https://huggingface.co/facebook/dinov3-vits16-pretrain-lvd1689m
+- https://huggingface.co/facebook/dinov3-vitb16-pretrain-lvd1689m
+- https://huggingface.co/facebook/dinov3-vitl16-pretrain-lvd1689m
+
+**Step 2 — Create a read-only token** at https://huggingface.co/settings/tokens
+
+**Step 3 — Export the token** before training or running the sanity check:
 
 **Option A — environment variable (interactive sessions / Jupyter):**
 ```bash
@@ -209,8 +216,8 @@ echo "hf_your_token_here" > ~/.hf_token
 chmod 600 ~/.hf_token
 ```
 PBS scripts automatically load the token with `export HF_TOKEN=$(cat ~/.hf_token)`.
-
-Get your token at https://huggingface.co/settings/tokens (read-only scope is sufficient).
+The sanity-check script (`scripts/sanity_dataloader.py`) also auto-loads `~/.hf_token` and will
+print actionable instructions if the token is missing.
 
 ### 4) Create virtual environment + install dependencies
 ```bash
@@ -296,7 +303,45 @@ Four clinically motivated threshold candidates are reported (selected from the s
 | Sensitivity ≥ 0.95 | highest specificity subject to sensitivity ≥ 0.95 |
 | Specificity ≥ 0.90 | highest sensitivity subject to specificity ≥ 0.90 |
 
-### 6) Grid search
+### 6) Ensemble evaluation
+
+`ensemble_eval.py` averages softmax probabilities from multiple trained checkpoints and
+reports combined AUC and threshold sweep metrics.  No re-training required.
+
+```bash
+# Two-model ensemble (best dinov3_large + best densenet121)
+uv run python scripts/ensemble_eval.py \
+  --run_dirs runs/dinov3_large_20260305_191824 runs/densenet121_20260228_193830
+
+# Evaluate on validation split
+uv run python scripts/ensemble_eval.py \
+  --run_dirs runs/A runs/B --split val
+
+# With lesion-crop preprocessing
+uv run python scripts/ensemble_eval.py \
+  --run_dirs runs/A runs/B --masks_dir data/masks
+```
+
+Key CLI arguments for `ensemble_eval.py`:
+
+| Argument | Default | Description |
+|---|---|---|
+| `--run_dirs` | required | One or more run directories (each must contain `config.json` + `best.pt`) |
+| `--split` | `test` | Split to evaluate: `val` or `test` |
+| `--images_dir` | `data/raw` | Directory containing raw image files |
+| `--masks_dir` | `None` | Mask directory for lesion-crop preprocessing |
+| `--output_dir` | `runs/ensemble_<timestamp>` | Output directory |
+| `--num_thresholds` | `201` | Threshold grid points for sweep |
+
+Three files are written to `--output_dir`:
+
+| Output file | Contents |
+|---|---|
+| `ensemble_<split>.json` | Individual AUCs, ensemble AUC, metrics @0.5, four optimal threshold candidates |
+| `ensemble_<split>_roc_curve.png` | ROC curve at 300 dpi |
+| `ensemble_<split>_threshold_sweep.csv` | Full per-threshold metrics table |
+
+### 7) Grid search
 
 `search.py` sweeps all combinations of `lr`, `weight_decay`, and `batch_size` from a fixed grid for one or more models.
 
@@ -311,7 +356,7 @@ uv run python scripts/search.py --models dinov3_large --epochs 100 \
     --part 1 --num_parts 3 --output_dir runs/search_dinov3_large
 ```
 
-Results are saved to `<output_dir>/grid_search_results.json`. HPC PBS scripts for each model are in `scripts/`.
+Results are saved to `<output_dir>/grid_search_results.json`. HPC PBS scripts for each model are in `scripts/hpc/`.
 
 Key CLI arguments for `search.py`:
 
