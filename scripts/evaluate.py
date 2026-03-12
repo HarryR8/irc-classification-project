@@ -116,6 +116,9 @@ def parse_args():
     parser.add_argument("--num_thresholds", type=int, default=201)
     parser.add_argument("--num_workers", type=int, default=None,
                         help="DataLoader workers (overrides value stored in config.json)")
+    parser.add_argument("--head_type", type=str, default=None,
+                        choices=["linear", "mlp", "mlp_deep"],
+                        help="Override head architecture from config.json")
     parser.add_argument(
         "--thresholds_csv",
         type=str,
@@ -224,7 +227,7 @@ def main():
         num_classes=2,
         pretrained=False,
         freeze_backbone=config.get("freeze_backbone", False),
-        head_type=config.get("head_type", "linear"),
+        head_type=args.head_type if args.head_type is not None else config.get("head_type", "linear"),
         head_dropout=config.get("dropout", 0.3),
     )
 
