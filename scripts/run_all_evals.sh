@@ -62,8 +62,8 @@ $EVAL --run_dir runs/efficientnet_b0_20260228_181632 \
 
 # efficientnet_b0  Cond C  val_AUC=0.9054  (trained with masks)
 echo ""
-echo ">>> efficientnet_b0 — Cond C  [efficientnet_b0_masked_20260228_200621]"
-$EVAL --run_dir runs/efficientnet_b0_masked_20260228_200621 \
+echo ">>> efficientnet_b0 — Cond C  [efficientnet_b0_20260228_200621]"
+$EVAL --run_dir runs/efficientnet_b0_20260228_200621 \
       --split test --images_dir "$IMAGES_DIR" --masks_dir "$MASKS_DIR"
 
 # dinov2_base  Cond A  val_AUC=0.8620  (frozen backbone, trained WITH masks)
