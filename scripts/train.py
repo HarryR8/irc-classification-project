@@ -111,6 +111,11 @@ def parse_args():
     parser.add_argument("--masks_dir", type=str, default=None,
                         help="Directory containing mask_*.png segmentation masks "
                              "(enables lesion-crop preprocessing)")
+    parser.add_argument("--backbone_lr_scale", type=float, default=1.0,
+                        help="Scale factor for backbone LR relative to head LR. "
+                             "E.g. 0.02 → backbone gets lr*0.02, head gets lr. "
+                             "Only applies to BackboneWithHead models (DINO/CLIP). "
+                             "Default 1.0 = uniform LR for all parameters.")
 
     return parser.parse_args()
 
@@ -162,18 +167,35 @@ def main():
     param_info = count_parameters(model)
     print(f"Parameters — total: {param_info['total']:,}  |  trainable: {param_info['trainable']:,}")
     print(f"Config     — lr={args.lr}  weight_decay={args.weight_decay}  "
-          f"freeze_backbone={args.freeze_backbone}  warmup_epochs={args.warmup_epochs}")
+          f"freeze_backbone={args.freeze_backbone}  warmup_epochs={args.warmup_epochs}  "
+          f"backbone_lr_scale={args.backbone_lr_scale}")
 
     # ── Loss, optimiser, scheduler ─────────────────────────────────────────────
     # Upweight malignant (minority class) to penalise missed cancers more heavily
     class_weights = torch.tensor([0.32, 0.68], dtype=torch.float32).to(device)
     criterion = nn.CrossEntropyLoss(weight=class_weights)
 
-    optimizer = torch.optim.AdamW(
-        filter(lambda p: p.requires_grad, model.parameters()),
-        lr=args.lr,
-        weight_decay=args.weight_decay,
+    use_diff_lr = (
+        args.backbone_lr_scale != 1.0
+        and hasattr(model, "backbone")
+        and hasattr(model, "head")
     )
+    if use_diff_lr:
+        backbone_lr = args.lr * args.backbone_lr_scale
+        param_groups = [
+            {"params": [p for p in model.backbone.parameters() if p.requires_grad],
+             "lr": backbone_lr},
+            {"params": [p for p in model.head.parameters() if p.requires_grad],
+             "lr": args.lr},
+        ]
+        print(f"Differential LR  — backbone: {backbone_lr:.2e}  head: {args.lr:.2e}")
+        optimizer = torch.optim.AdamW(param_groups, weight_decay=args.weight_decay)
+    else:
+        optimizer = torch.optim.AdamW(
+            filter(lambda p: p.requires_grad, model.parameters()),
+            lr=args.lr,
+            weight_decay=args.weight_decay,
+        )
 
     scheduler = build_scheduler(optimizer, args.epochs, args.warmup_epochs)
 
