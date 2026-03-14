@@ -116,6 +116,8 @@ def parse_args():
                              "E.g. 0.02 → backbone gets lr*0.02, head gets lr. "
                              "Only applies to BackboneWithHead models (DINO/CLIP). "
                              "Default 1.0 = uniform LR for all parameters.")
+    parser.add_argument("--eval_test_every_epoch", action="store_true", default=False,
+                        help="Evaluate on test split after each epoch and save probs to epoch_test_preds.npz")
 
     return parser.parse_args()
 
@@ -214,6 +216,13 @@ def main():
     best_epoch = -1
     patience_counter = 0
 
+    # Per-epoch test evaluation accumulators
+    all_test_probs = []
+    all_test_aucs = []
+    all_epoch_nums = []
+    test_labels_once = None
+    test_image_ids_once = None
+
     for epoch in range(1, args.epochs + 1):
         train_metrics = train_one_epoch(model, train_loader, criterion, optimizer, device)
         val_metrics = evaluate(model, val_loader, criterion, device)
@@ -229,13 +238,27 @@ def main():
             "val_loss": round(val_metrics["loss"], 6),
             "val_auc": round(val_metrics["auc"], 6),
         }
+
+        if args.eval_test_every_epoch:
+            test_metrics = evaluate(model, test_loader, criterion, device)
+            all_test_probs.append(test_metrics["probs"])
+            all_test_aucs.append(test_metrics["auc"])
+            all_epoch_nums.append(epoch)
+            if test_labels_once is None:
+                test_labels_once = test_metrics["labels"]
+                test_image_ids_once = test_metrics["image_ids"]
+            epoch_record["test_auc"] = round(test_metrics["auc"], 6)
+
         history.append(epoch_record)
 
-        print(
+        log_line = (
             f"Epoch {epoch:02d}/{args.epochs:02d} | lr={current_lr:.2e} | "
             f"Train loss={train_metrics['loss']:.3f} auc={train_metrics['auc']:.3f} | "
             f"Val   loss={val_metrics['loss']:.3f} auc={val_metrics['auc']:.3f}"
         )
+        if args.eval_test_every_epoch:
+            log_line += f" | Test auc={test_metrics['auc']:.3f}"
+        print(log_line)
 
         if val_metrics["auc"] > best_val_auc:
             best_val_auc = val_metrics["auc"]
@@ -270,6 +293,18 @@ def main():
 
         with open(os.path.join(args.output_dir, "history.json"), "w") as f:
             json.dump(history, f, indent=2)
+
+    if args.eval_test_every_epoch and all_test_probs:
+        npz_path = os.path.join(args.output_dir, "epoch_test_preds.npz")
+        np.savez_compressed(
+            npz_path,
+            probs=np.array(all_test_probs, dtype=np.float32),
+            labels=np.array(test_labels_once, dtype=np.int64),
+            aucs=np.array(all_test_aucs, dtype=np.float64),
+            epochs=np.array(all_epoch_nums, dtype=np.int32),
+            image_ids=np.array(test_image_ids_once, dtype=object),
+        )
+        print(f"Per-epoch test predictions saved to: {npz_path}")
 
     print(f"\nTraining complete. Best val AUC = {best_val_auc:.4f} at epoch {best_epoch}.")
     print(f"Outputs saved to: {args.output_dir}")

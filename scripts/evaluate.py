@@ -125,18 +125,27 @@ def parse_args():
         default=None,
         help="Optional path for threshold sweep CSV. Defaults to <run_dir>/eval_<split>_threshold_sweep.csv",
     )
+    parser.add_argument(
+        "--checkpoint",
+        type=str,
+        default=None,
+        help="Path to a specific .pt checkpoint file (default: best.pt in run_dir)",
+    )
     return parser.parse_args()
 
 
-def resolve_run_artifacts(run_dir_arg: str):
+def resolve_run_artifacts(run_dir_arg: str, checkpoint_arg: str | None = None):
     # Resolve run directory and require the standard training artifacts.
     run_dir = Path(run_dir_arg).expanduser()
     run_dir = (Path.cwd() / run_dir).resolve() if not run_dir.is_absolute() else run_dir.resolve()
     config_path = run_dir / "config.json"
-    ckpt_path = run_dir / "best.pt"
-    missing = [p.name for p in (config_path, ckpt_path) if not p.exists()]
+    if checkpoint_arg is not None:
+        ckpt_path = Path(checkpoint_arg).expanduser().resolve()
+    else:
+        ckpt_path = run_dir / "best.pt"
+    missing = [str(p) for p in (config_path, ckpt_path) if not p.exists()]
     if missing:
-        raise FileNotFoundError(f"Missing required file(s) in {run_dir}: {', '.join(missing)}")
+        raise FileNotFoundError(f"Missing required file(s): {', '.join(missing)}")
     return run_dir, config_path, ckpt_path
 
 
@@ -193,7 +202,7 @@ def _serialize_threshold_result(
 
 def main():
     args = parse_args()
-    run_dir, config_path, ckpt_path = resolve_run_artifacts(args.run_dir)
+    run_dir, config_path, ckpt_path = resolve_run_artifacts(args.run_dir, args.checkpoint)
 
     # Load model/training configuration tied to this run directory.
     with open(config_path) as f:
