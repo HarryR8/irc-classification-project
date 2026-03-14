@@ -141,31 +141,44 @@ def load_roc_from_sweep(csv_path: Path) -> tuple[np.ndarray, np.ndarray, np.ndar
     return fpr.astype(np.float64), tpr.astype(np.float64), thresholds.astype(np.float64)
 
 
-def process_run(run_dir: Path, results_dir: Path) -> dict | None:
-    """Process a single run directory; returns a summary row dict or None on failure."""
-    config_path = run_dir / "config.json"
-    eval_path = run_dir / "eval_test.json"
+def process_run(run_dir: Path, results_dir: Path) -> tuple[dict | None, str | None]:
+    """Process a single run directory.
 
-    if not config_path.exists() or not eval_path.exists():
-        return None
+    Returns (row_dict, None) on success, (None, reason_str) on failure.
+    """
+    if run_dir.name.startswith("."):
+        return None, "hidden dir"
 
     run_name = run_dir.name
+    config_path = run_dir / "config.json"
+
+    # Resolve eval JSON — prefer eval_test.json, fall back to ensemble_test.json
+    eval_path = run_dir / "eval_test.json"
+    sweep_csv_name = "eval_test_threshold_sweep.csv"
+    is_ensemble = False
+    if not eval_path.exists():
+        ensemble_path = run_dir / "ensemble_test.json"
+        if ensemble_path.exists():
+            eval_path = ensemble_path
+            sweep_csv_name = "ensemble_test_threshold_sweep.csv"
+            is_ensemble = True
+        else:
+            return None, "no eval JSON"
 
     try:
-        with open(config_path) as f:
-            config = json.load(f)
+        config = json.load(open(config_path)) if config_path.exists() else {}
         with open(eval_path) as f:
             eval_data = json.load(f)
     except Exception as e:
         warnings.warn(f"[{run_name}] Failed to load JSON: {e}")
-        return None
+        return None, "JSON parse error"
 
-    row = {"run_name": run_name}
+    row = {"run_name": run_name, "run_type": "ensemble" if is_ensemble else "single", "is_ensemble": is_ensemble}
     row.update(parse_config(config))
     row.update(parse_eval(eval_data))
 
     # ---------- ROC curve from threshold sweep CSV ----------
-    sweep_csv = run_dir / "eval_test_threshold_sweep.csv"
+    sweep_csv = run_dir / sweep_csv_name
     if sweep_csv.exists():
         roc_data = load_roc_from_sweep(sweep_csv)
         if roc_data is not None:
@@ -174,7 +187,7 @@ def process_run(run_dir: Path, results_dir: Path) -> dict | None:
             roc_out.parent.mkdir(parents=True, exist_ok=True)
             np.savez_compressed(roc_out, fpr=fpr, tpr=tpr, thresholds=thresholds)
     else:
-        warnings.warn(f"[{run_name}] eval_test_threshold_sweep.csv missing — skipping ROC npz")
+        warnings.warn(f"[{run_name}] {sweep_csv_name} missing — skipping ROC npz")
 
     # ---------- Confusion matrix JSON ----------
     cm = eval_data.get("confusion_matrix")
@@ -197,7 +210,7 @@ def process_run(run_dir: Path, results_dir: Path) -> dict | None:
         except Exception as e:
             warnings.warn(f"[{run_name}] Failed to load history.json: {e}")
 
-    return row
+    return row, None
 
 
 def main():
@@ -240,6 +253,9 @@ def main():
             key=lambda p: p.name,
         )
 
+    # Filter hidden dirs up front (e.g. .ipynb_checkpoints)
+    candidates = [p for p in candidates if not p.name.startswith(".")]
+
     if args.poster_only:
         candidates = [
             p for p in candidates
@@ -247,12 +263,12 @@ def main():
         ]
 
     rows = []
-    skipped = []
+    skipped: dict[str, list[str]] = {}  # reason -> [run_name, ...]
 
     for run_dir in candidates:
-        row = process_run(run_dir, results_dir)
+        row, reason = process_run(run_dir, results_dir)
         if row is None:
-            skipped.append(run_dir.name)
+            skipped.setdefault(reason, []).append(run_dir.name)
         else:
             rows.append(row)
 
@@ -271,11 +287,12 @@ def main():
     print(f"\n{'='*60}")
     print(f"  collect_results.py — Summary")
     print(f"{'='*60}")
+    total_skipped = sum(len(v) for v in skipped.values())
     print(f"  Runs processed : {len(rows)}")
-    print(f"  Runs skipped   : {len(skipped)}")
+    print(f"  Runs skipped   : {total_skipped}")
     if skipped:
-        for s in skipped:
-            print(f"    - {s}")
+        for reason, names in skipped.items():
+            print(f"    {reason} ({len(names)}): {', '.join(names)}")
     print(f"\n  Results written to: {results_dir}/")
     print(f"    summary.csv ({len(df)} rows)")
     print(f"    roc_curves/   ({len(list((results_dir / 'roc_curves').glob('*.npz') if (results_dir / 'roc_curves').exists() else []))} files)")
@@ -283,11 +300,13 @@ def main():
     print(f"    training_curves/ ({len(list((results_dir / 'training_curves').glob('*.json') if (results_dir / 'training_curves').exists() else []))} files)")
 
     # Top runs by AUC
-    auc_col = df[["run_name", "model", "masks_trained", "freeze_backbone", "auc_roc"]].dropna(subset=["auc_roc"])
+    auc_col = df[["run_name", "model", "masks_trained", "freeze_backbone", "auc_roc", "is_ensemble"]].dropna(subset=["auc_roc"])
     if not auc_col.empty:
         print(f"\n  Top runs by AUC-ROC:")
         for _, r in auc_col.head(10).iterrows():
             flags = []
+            if r.get("is_ensemble"):
+                flags.append("ensemble")
             if r.get("masks_trained"):
                 flags.append("masked")
             if r.get("freeze_backbone"):
