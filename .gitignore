@@ -20,6 +20,7 @@ data/masks/
 checkpoints/
 runs/
 logs/
+results/
 
 # IDE / OS
 .idea/
