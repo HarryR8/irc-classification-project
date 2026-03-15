@@ -4,6 +4,35 @@
 ## Goal
 Build a **reproducible** ML pipeline to classify **benign vs malignant** tumours, with honest evaluation (patient-level splits where applicable).
 
+## Introduction
+Breast cancer is the most common cancer in women globally and the 2nd most
+prevalent cancer overall worldwide. Early detection of breast cancer with
+ultrasound is critical as it identifies small, non-palpable tumours that might be
+missed by X-ray mammography, which can significantly improve clinical
+outcomes. The 5-year survival rate of Stage 1 breast cancer is approximately
+99%, which severely drops to only about 30% in Stage 4 metastatic breast cancer,
+highlighting the pressing need for early breast tumour detection. The use of deep
+learning models such as Bre-Net (implemented transfer learning with
+CNNs) has previously demonstrated an improvement in the diagnostic
+performance of radiologists in the identification of malignant breast
+carcinomas from ultrasonography images. Therefore, it would be worthwhile to
+investigate whether an alternative deep learning model could achieve a similar
+diagnostic accuracy on an entirely novel, independent dataset.  
+
+## Rationale
+Ultrasound serves as a superior breast cancer imaging modality in younger women
+and women with greater breast density, and it does not subject patients to ionising
+radiation or intravenous contrast, unlike X-ray mammography. Breast Imaging
+Reporting and Data System (BI-RADS)represents the current gold standard as a
+risk assessment tool and universal reporting system for breast cancer screening,
+including ultrasound, mammography and MRI. According to current clinical
+guidelines, any patient that has been assigned a BI-RADS category of 4A or above
+(i.e. has a likelihood of malignancy as low as >2% to 10%), might be subjected to a
+biopsy. However, only 9–11% of biopsies performed following ultrasound screening
+are malignant, increasing healthcare expenses and patient anxiety. Therefore,
+alternative non-invasive approaches for malignant breast tumour detection are
+necessary. 
+
 ## Datasets
   - **BUS-BRA (primary)** - 1875 images / 1064 patients, BI-RADS + tumour delineations. **CC BY 4.0**
   Links: https://github.com/wgomezf/BUS-BRA | https://zenodo.org/records/8231412
