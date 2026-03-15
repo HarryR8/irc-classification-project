@@ -33,6 +33,10 @@ are malignant, increasing healthcare expenses and patient anxiety. Therefore,
 alternative non-invasive approaches for malignant breast tumour detection are
 necessary. 
 
+A table with text and symbols
+
+AI-generated content may be incorrect.
+
 ## Datasets
   - **BUS-BRA (primary)** - 1875 images / 1064 patients, BI-RADS + tumour delineations. **CC BY 4.0**
   Links: https://github.com/wgomezf/BUS-BRA | https://zenodo.org/records/8231412
