@@ -23,7 +23,7 @@ diagnostic accuracy on an entirely novel, independent dataset.
 Ultrasound serves as a superior breast cancer imaging modality in younger women
 and women with greater breast density, and it does not subject patients to ionising
 radiation or intravenous contrast, unlike X-ray mammography. Breast Imaging
-Reporting and Data System (BI-RADS)represents the current gold standard as a
+Reporting and Data System (BI-RADS) represents the current gold standard as a
 risk assessment tool and universal reporting system for breast cancer screening,
 including ultrasound, mammography and MRI. According to current clinical
 guidelines, any patient that has been assigned a BI-RADS category of 4A or above
