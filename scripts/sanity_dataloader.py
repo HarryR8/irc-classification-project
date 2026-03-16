@@ -4,9 +4,14 @@ Run from the repo root:
     python scripts/sanity_dataloader.py --model_key imagenet_cnn
     python scripts/sanity_dataloader.py --model_key clip
     python scripts/sanity_dataloader.py --model_key dinov2
+    python scripts/sanity_dataloader.py --model_key dinov3
 
 For each split the script prints the batch tensor shape/dtype/range
 and verifies that metadata lists have the expected length.
+
+Note: --model_key dinov3 requires a HuggingFace token and access to the
+Meta DINOv3 checkpoints. Run with --model_key imagenet_cnn first to verify
+the rest of the pipeline without any HuggingFace dependencies.
 """
 
 import argparse
@@ -17,6 +22,44 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from busbra.data.loaders import create_dataloaders
+
+_DINOV3_REPOS = [
+    "facebook/dinov3-vits16-pretrain-lvd1689m",
+    "facebook/dinov3-vitb16-pretrain-lvd1689m",
+    "facebook/dinov3-vitl16-pretrain-lvd1689m",
+]
+
+
+def _check_hf_token() -> None:
+    """Verify HF_TOKEN is set; try ~/.hf_token as fallback. Print guidance and exit if missing."""
+    import os
+
+    token = os.environ.get("HF_TOKEN", "").strip()
+    if not token:
+        token_file = Path.home() / ".hf_token"
+        if token_file.exists():
+            token = token_file.read_text().strip()
+            if token:
+                os.environ["HF_TOKEN"] = token
+                print(f"  [HF] Loaded token from {token_file}")
+
+    if not token:
+        print(
+            "\n[ERROR] HF_TOKEN is not set.\n"
+            "\nDINOv3 checkpoints are hosted on HuggingFace and require:\n"
+            "  1. A HuggingFace account  →  https://huggingface.co/join\n"
+            "  2. A read-access token    →  https://huggingface.co/settings/tokens\n"
+            "  3. Approved access to each DINOv3 checkpoint repo:\n"
+        )
+        for repo in _DINOV3_REPOS:
+            print(f"       https://huggingface.co/{repo}")
+        print(
+            "\nThen export your token before running:\n"
+            "  export HF_TOKEN=\"hf_your_token_here\"\n"
+            "\nOr write it to ~/.hf_token (used automatically by this script):\n"
+            "  echo \"hf_your_token_here\" > ~/.hf_token && chmod 600 ~/.hf_token\n"
+        )
+        sys.exit(1)
 
 
 def check_batch(batch: dict, split: str) -> None:
@@ -59,6 +102,9 @@ def main():
                         help="0 = main process (easier to debug)")
     parser.add_argument("--size",        type=int, default=224)
     args = parser.parse_args()
+
+    if args.model_key == "dinov3":
+        _check_hf_token()
 
     print(f"Testing model_key='{args.model_key}'  size={args.size}")
     print(f"split_file : {args.split_file}")

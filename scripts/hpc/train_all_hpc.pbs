@@ -1,0 +1,31 @@
+#!/bin/bash
+#PBS -l select=1:ncpus=4:mem=32gb:ngpus=1
+#PBS -l walltime=48:00:00
+#PBS -N train_all
+# Runs train_all.sh — full comparison matrix (9 models × up to 3 conditions).
+# Models: resnet18, resnet50, densenet121, clip_vit_base, dinov2_base, dinov2_large,
+#         dinov3_base, dinov3_large  (efficientnet_b0 existing runs are reused)
+# Hyperparameters updated from grid-search results (2026-03-10).
+#PBS -o logs/train_all.out
+#PBS -e logs/train_all.err
+
+# --- Customise before submitting ---
+PROJECT_DIR="/rds/general/user/zj1024/home/irc-classification-project"
+MASKS_DIR="$PROJECT_DIR/data/masks"
+
+cd "$PROJECT_DIR"
+
+# HuggingFace token — required for gated DINOv3 models
+export HF_TOKEN=$(cat ~/.hf_token)
+
+mkdir -p logs
+
+echo "=== train_all_hpc.pbs ==="
+echo "Started: $(date)"
+echo "PROJECT_DIR: $PROJECT_DIR"
+echo "MASKS_DIR:   $MASKS_DIR"
+
+bash scripts/train_all.sh --masks_dir "$MASKS_DIR"
+
+echo ""
+echo "=== All done: $(date) ==="

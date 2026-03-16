@@ -1,0 +1,34 @@
+#!/bin/bash
+#PBS -l select=1:ncpus=4:mem=32gb:ngpus=1
+#PBS -l walltime=4:00:00
+#PBS -N eval_all
+# Runs run_all_evals.sh — test-set evaluation for all completed runs.
+# After each new training batch (train_cnn_hpc.pbs / train_dino_hpc.pbs),
+# fill in the Phase 2/3 run dirs in run_all_evals.sh and resubmit this job.
+#PBS -o logs/eval_all.out
+#PBS -e logs/eval_all.err
+
+# --- Customise before submitting ---
+PROJECT_DIR="/rds/general/user/zj1024/home/irc-classification-project"
+IMAGES_DIR="$PROJECT_DIR/data/raw"
+MASKS_DIR="$PROJECT_DIR/data/masks"
+
+cd "$PROJECT_DIR"
+
+# HuggingFace token — required to load DINO model architectures
+export HF_TOKEN=$(cat ~/.hf_token)
+
+mkdir -p logs
+
+echo "=== run_all_evals_hpc.pbs ==="
+echo "Started: $(date)"
+echo "PROJECT_DIR: $PROJECT_DIR"
+echo "IMAGES_DIR:  $IMAGES_DIR"
+echo "MASKS_DIR:   $MASKS_DIR"
+
+bash scripts/run_all_evals.sh \
+    --images_dir "$IMAGES_DIR" \
+    --masks_dir "$MASKS_DIR"
+
+echo ""
+echo "=== All done: $(date) ==="

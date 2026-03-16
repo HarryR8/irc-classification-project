@@ -83,13 +83,15 @@ def parse_args():
                         help="Model name from registry")
     parser.add_argument("--epochs", type=int, default=30,
                         help="Number of training epochs")
+    parser.add_argument("--patience", type=int, default=0,
+                        help="Early stopping patience (0 = disabled)")
     parser.add_argument("--batch_size", type=int, default=32,
                         help="Batch size for all dataloaders")
     parser.add_argument("--lr", type=float, default=None,
                         help="Learning rate for AdamW (default: per-model config)")
     parser.add_argument("--weight_decay", type=float, default=None,
                         help="Weight decay for AdamW (default: per-model config)")
-    parser.add_argument("--freeze_backbone", action="store_true", default=None,
+    parser.add_argument("--freeze_backbone", action="store_true", default=False,
                         help="Freeze backbone weights (only train head)")
     parser.add_argument("--head_type", type=str, default="linear",
                         choices=["linear", "mlp"],
@@ -109,6 +111,13 @@ def parse_args():
     parser.add_argument("--masks_dir", type=str, default=None,
                         help="Directory containing mask_*.png segmentation masks "
                              "(enables lesion-crop preprocessing)")
+    parser.add_argument("--backbone_lr_scale", type=float, default=1.0,
+                        help="Scale factor for backbone LR relative to head LR. "
+                             "E.g. 0.02 → backbone gets lr*0.02, head gets lr. "
+                             "Only applies to BackboneWithHead models (DINO/CLIP). "
+                             "Default 1.0 = uniform LR for all parameters.")
+    parser.add_argument("--eval_test_every_epoch", action="store_true", default=False,
+                        help="Evaluate on test split after each epoch and save probs to epoch_test_preds.npz")
 
     return parser.parse_args()
 
@@ -152,7 +161,7 @@ def main():
         num_classes=2,
         pretrained=True,
         freeze_backbone=args.freeze_backbone,
-        head_type=args.head_type if args.freeze_backbone else "linear",
+        head_type=args.head_type,
         head_dropout=args.dropout,
     )
     model = model.to(device)
@@ -160,18 +169,35 @@ def main():
     param_info = count_parameters(model)
     print(f"Parameters — total: {param_info['total']:,}  |  trainable: {param_info['trainable']:,}")
     print(f"Config     — lr={args.lr}  weight_decay={args.weight_decay}  "
-          f"freeze_backbone={args.freeze_backbone}  warmup_epochs={args.warmup_epochs}")
+          f"freeze_backbone={args.freeze_backbone}  warmup_epochs={args.warmup_epochs}  "
+          f"backbone_lr_scale={args.backbone_lr_scale}")
 
     # ── Loss, optimiser, scheduler ─────────────────────────────────────────────
     # Upweight malignant (minority class) to penalise missed cancers more heavily
     class_weights = torch.tensor([0.32, 0.68], dtype=torch.float32).to(device)
     criterion = nn.CrossEntropyLoss(weight=class_weights)
 
-    optimizer = torch.optim.AdamW(
-        filter(lambda p: p.requires_grad, model.parameters()),
-        lr=args.lr,
-        weight_decay=args.weight_decay,
+    use_diff_lr = (
+        args.backbone_lr_scale != 1.0
+        and hasattr(model, "backbone")
+        and hasattr(model, "head")
     )
+    if use_diff_lr:
+        backbone_lr = args.lr * args.backbone_lr_scale
+        param_groups = [
+            {"params": [p for p in model.backbone.parameters() if p.requires_grad],
+             "lr": backbone_lr},
+            {"params": [p for p in model.head.parameters() if p.requires_grad],
+             "lr": args.lr},
+        ]
+        print(f"Differential LR  — backbone: {backbone_lr:.2e}  head: {args.lr:.2e}")
+        optimizer = torch.optim.AdamW(param_groups, weight_decay=args.weight_decay)
+    else:
+        optimizer = torch.optim.AdamW(
+            filter(lambda p: p.requires_grad, model.parameters()),
+            lr=args.lr,
+            weight_decay=args.weight_decay,
+        )
 
     scheduler = build_scheduler(optimizer, args.epochs, args.warmup_epochs)
 
@@ -188,6 +214,14 @@ def main():
     history = []
     best_val_auc = -1.0
     best_epoch = -1
+    patience_counter = 0
+
+    # Per-epoch test evaluation accumulators
+    all_test_probs = []
+    all_test_aucs = []
+    all_epoch_nums = []
+    test_labels_once = None
+    test_image_ids_once = None
 
     for epoch in range(1, args.epochs + 1):
         train_metrics = train_one_epoch(model, train_loader, criterion, optimizer, device)
@@ -204,17 +238,32 @@ def main():
             "val_loss": round(val_metrics["loss"], 6),
             "val_auc": round(val_metrics["auc"], 6),
         }
+
+        if args.eval_test_every_epoch:
+            test_metrics = evaluate(model, test_loader, criterion, device)
+            all_test_probs.append(test_metrics["probs"])
+            all_test_aucs.append(test_metrics["auc"])
+            all_epoch_nums.append(epoch)
+            if test_labels_once is None:
+                test_labels_once = test_metrics["labels"]
+                test_image_ids_once = test_metrics["image_ids"]
+            epoch_record["test_auc"] = round(test_metrics["auc"], 6)
+
         history.append(epoch_record)
 
-        print(
+        log_line = (
             f"Epoch {epoch:02d}/{args.epochs:02d} | lr={current_lr:.2e} | "
             f"Train loss={train_metrics['loss']:.3f} auc={train_metrics['auc']:.3f} | "
             f"Val   loss={val_metrics['loss']:.3f} auc={val_metrics['auc']:.3f}"
         )
+        if args.eval_test_every_epoch:
+            log_line += f" | Test auc={test_metrics['auc']:.3f}"
+        print(log_line)
 
         if val_metrics["auc"] > best_val_auc:
             best_val_auc = val_metrics["auc"]
             best_epoch = epoch
+            patience_counter = 0
             torch.save(
                 {
                     "epoch": epoch,
@@ -224,6 +273,12 @@ def main():
                 },
                 os.path.join(args.output_dir, "best.pt"),
             )
+        else:
+            if args.patience > 0:
+                patience_counter += 1
+                if patience_counter >= args.patience:
+                    print(f"Early stopping at epoch {epoch} (no improvement for {args.patience} epochs)")
+                    break
 
         torch.save(
             {
@@ -238,6 +293,18 @@ def main():
 
         with open(os.path.join(args.output_dir, "history.json"), "w") as f:
             json.dump(history, f, indent=2)
+
+    if args.eval_test_every_epoch and all_test_probs:
+        npz_path = os.path.join(args.output_dir, "epoch_test_preds.npz")
+        np.savez_compressed(
+            npz_path,
+            probs=np.array(all_test_probs, dtype=np.float32),
+            labels=np.array(test_labels_once, dtype=np.int64),
+            aucs=np.array(all_test_aucs, dtype=np.float64),
+            epochs=np.array(all_epoch_nums, dtype=np.int32),
+            image_ids=np.array(test_image_ids_once, dtype=object),
+        )
+        print(f"Per-epoch test predictions saved to: {npz_path}")
 
     print(f"\nTraining complete. Best val AUC = {best_val_auc:.4f} at epoch {best_epoch}.")
     print(f"Outputs saved to: {args.output_dir}")

@@ -19,6 +19,8 @@ data/masks/
 # Training outputs
 checkpoints/
 runs/
+logs/
+results/
 
 # IDE / OS
 .idea/

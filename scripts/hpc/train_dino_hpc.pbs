@@ -1,0 +1,29 @@
+#!/bin/bash
+#PBS -l select=1:ncpus=4:mem=32gb:ngpus=1
+#PBS -l walltime=36:00:00
+#PBS -N train_dino
+# Runs train_dino.sh — DINO models (dinov2_base A/B, dinov2_large A/B/C,
+# dinov3_base A/B, dinov3_large A/B).
+# Estimated runtime ~26 h; walltime=36:00:00 provides comfortable headroom.
+#PBS -o logs/train_dino.out
+#PBS -e logs/train_dino.err
+
+PROJECT_DIR="/rds/general/user/zj1024/home/irc-classification-project"
+MASKS_DIR="$PROJECT_DIR/data/masks"
+
+cd "$PROJECT_DIR"
+
+# HuggingFace token — required for gated DINOv3 models
+export HF_TOKEN=$(cat ~/.hf_token)
+
+mkdir -p logs
+
+echo "=== train_dino_hpc.pbs ==="
+echo "Started: $(date)"
+echo "PROJECT_DIR: $PROJECT_DIR"
+echo "MASKS_DIR:   $MASKS_DIR"
+
+bash scripts/train_dino.sh --masks_dir "$MASKS_DIR"
+
+echo ""
+echo "=== All done: $(date) ==="

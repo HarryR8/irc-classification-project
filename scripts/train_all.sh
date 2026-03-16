@@ -1,121 +1,81 @@
 #!/usr/bin/env bash
-# train_all.sh — run all training jobs needed to fill the 7-model × 3-condition
-# comparison matrix with standardised hyperparameters.
+# Train the full comparison matrix: 9 models × 3 conditions (A/B/C).
 #
-# Conditions
-#   A  freeze=True,  no masks   (frozen backbone, head-only training)
-#   B  freeze=False, no masks   (full fine-tuning)
-#   C  freeze=False, with masks (full fine-tuning + lesion-crop preprocessing)
+# Condition A — freeze_backbone, no masks, 50 epochs, patience 15
+# Condition B — full fine-tune,   no masks, 100 epochs, patience 20
+# Condition C — full fine-tune,   masks,    100 epochs, patience 20
 #
-# Standard hyperparameters by group
-#   CNN  (resnet18, efficientnet_b0, densenet121)
-#     A: lr=1e-3  wd=1e-4  mlp  dropout=0.3  epochs=50
-#     B/C: lr=1e-4  wd=1e-4  mlp  dropout=0.5  epochs=100
-#   DINO (dinov2_base, dinov2_large, dinov3_base, dinov3_large)
-#     A: lr=1e-5  wd=0.01  mlp  dropout=0.3  epochs=50
-#     B/C: lr=1e-5  wd=0.01  mlp  dropout=0.5  epochs=100
+# All runs include --eval_test_every_epoch to produce epoch_test_preds.npz.
 #
-# Existing runs that are already good — DO NOT retrain:
-#   efficientnet_b0_20260228_175041  (A)  val_AUC=0.7279
-#   efficientnet_b0_20260228_181632  (B)  val_AUC=0.8625
-#   efficientnet_b0_20260228_200621  (C)  val_AUC=0.9054
-#   densenet121_20260228_201457      (A)  val_AUC=0.7514
-#   densenet121_20260228_184613      (B)  val_AUC=0.9166
-#   densenet121_20260228_193830      (C)  val_AUC=0.9283
-#   dinov2_base_20260305_171950      (C)  val_AUC=0.8878
-#   dinov3_base_20260305_183935      (C)  val_AUC=0.8984  [linear head, acceptable]
-#   dinov3_large_20260305_191824     (C)  val_AUC=0.8869  [linear head, acceptable]
+# Usage:
+#   bash scripts/train_all.sh [--masks_dir /path/to/masks]
 #
-# Usage
-#   bash scripts/train_all.sh
-#   bash scripts/train_all.sh --masks_dir /path/to/masks  # override mask path (HPC)
+# On HPC this script is called by train_all_hpc.pbs which passes --masks_dir.
 
 set -euo pipefail
 
-MASKS_DIR="data/masks"
-# Allow overriding masks path for HPC environments:
-#   bash scripts/train_all.sh --masks_dir /rds/general/.../data/masks
-if [[ "${1:-}" == "--masks_dir" && -n "${2:-}" ]]; then
-    MASKS_DIR="$2"
-fi
+# ── Parse optional --masks_dir argument ──────────────────────────────────────
+MASKS_DIR=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --masks_dir)
+            MASKS_DIR="$2"
+            shift 2
+            ;;
+        *)
+            echo "Unknown argument: $1" >&2
+            exit 1
+            ;;
+    esac
+done
 
 TRAIN="uv run python scripts/train.py"
+SPLIT_FILE="data/splits/splits.csv"
+IMAGES_DIR="data/raw"
+COMMON="--split_file $SPLIT_FILE --images_dir $IMAGES_DIR --eval_test_every_epoch --head_type mlp"
 
-echo "=========================================================="
-echo "  train_all.sh — BUS-BRA comparison matrix training"
-echo "  masks_dir = $MASKS_DIR"
-echo "=========================================================="
+# ── Condition A — frozen backbone, 50 epochs, patience 15 ───────────────────
+echo "=== Condition A: frozen backbone ==="
 
-# ── resnet18 ────────────────────────────────────────────────────────────────
-echo ""
-echo ">>> resnet18 — A: freeze=True, no masks  [RETRAIN: was only 30 epochs, poor AUC]"
-$TRAIN --model resnet18 --freeze_backbone --head_type mlp --dropout 0.3 \
-       --lr 1e-3 --weight_decay 1e-4 --epochs 50
+$TRAIN --model resnet18        $COMMON --freeze_backbone --epochs 50 --patience 15 --lr 1e-3  --weight_decay 1e-5 --batch_size 32 --dropout 0.3
+$TRAIN --model resnet50        $COMMON --freeze_backbone --epochs 50 --patience 15 --lr 1e-3  --weight_decay 1e-4 --batch_size 16 --dropout 0.3
+$TRAIN --model densenet121     $COMMON --freeze_backbone --epochs 50 --patience 15 --lr 5e-4  --weight_decay 1e-4 --batch_size 32 --dropout 0.3
+$TRAIN --model efficientnet_b0 $COMMON --freeze_backbone --epochs 50 --patience 15 --lr 5e-4  --weight_decay 1e-5 --batch_size 16 --dropout 0.3
+$TRAIN --model clip_vit_base   $COMMON --freeze_backbone --epochs 50 --patience 15 --lr 1e-3  --weight_decay 1e-4 --batch_size 16 --dropout 0.3
+$TRAIN --model dinov2_base     $COMMON --freeze_backbone --epochs 50 --patience 15 --lr 1e-5  --weight_decay 1e-2 --batch_size 32 --dropout 0.3
+$TRAIN --model dinov2_large    $COMMON --freeze_backbone --epochs 50 --patience 15 --lr 1e-5  --weight_decay 1e-2 --batch_size 16 --dropout 0.3
+$TRAIN --model dinov3_base     $COMMON --freeze_backbone --epochs 50 --patience 15 --lr 1e-5  --weight_decay 1e-2 --batch_size 32 --dropout 0.3
+$TRAIN --model dinov3_large    $COMMON --freeze_backbone --epochs 50 --patience 15 --lr 1e-5  --weight_decay 1e-2 --batch_size 16 --dropout 0.3
 
-echo ""
-echo ">>> resnet18 — B: freeze=False, no masks  [NEW]"
-$TRAIN --model resnet18 --head_type mlp --dropout 0.5 \
-       --lr 1e-4 --weight_decay 1e-4 --epochs 100
+# ── Condition B — full fine-tune, no masks, 100 epochs, patience 20 ─────────
+echo "=== Condition B: full fine-tune, no masks ==="
 
-echo ""
-echo ">>> resnet18 — C: freeze=False, masks  [NEW]"
-$TRAIN --model resnet18 --head_type mlp --dropout 0.5 \
-       --lr 1e-4 --weight_decay 1e-4 --epochs 100 \
-       --masks_dir "$MASKS_DIR"
+$TRAIN --model resnet18        $COMMON --epochs 100 --patience 20 --lr 1e-4 --weight_decay 1e-5 --batch_size 32 --dropout 0.5
+$TRAIN --model resnet50        $COMMON --epochs 100 --patience 20 --lr 1e-4 --weight_decay 1e-5 --batch_size 16 --dropout 0.5
+$TRAIN --model densenet121     $COMMON --epochs 100 --patience 20 --lr 1e-4 --weight_decay 1e-5 --batch_size 32 --dropout 0.5
+$TRAIN --model efficientnet_b0 $COMMON --epochs 100 --patience 20 --lr 1e-4 --weight_decay 1e-5 --batch_size 16 --dropout 0.5
+$TRAIN --model clip_vit_base   $COMMON --epochs 100 --patience 20 --lr 1e-5 --weight_decay 1e-2 --batch_size 16 --dropout 0.5
+$TRAIN --model dinov2_base     $COMMON --epochs 100 --patience 20 --lr 1e-5 --weight_decay 1e-2 --batch_size 32 --dropout 0.5 --backbone_lr_scale 0.1
+$TRAIN --model dinov2_large    $COMMON --epochs 100 --patience 20 --lr 1e-5 --weight_decay 1e-2 --batch_size 16 --dropout 0.5 --backbone_lr_scale 0.1
+$TRAIN --model dinov3_base     $COMMON --epochs 100 --patience 20 --lr 1e-5 --weight_decay 1e-2 --batch_size 32 --dropout 0.5 --backbone_lr_scale 0.1
+$TRAIN --model dinov3_large    $COMMON --epochs 100 --patience 20 --lr 1e-5 --weight_decay 1e-2 --batch_size 16 --dropout 0.5 --backbone_lr_scale 0.1
 
-# ── dinov2_base ──────────────────────────────────────────────────────────────
-echo ""
-echo ">>> dinov2_base — A: freeze=True, no masks  [NEW]"
-$TRAIN --model dinov2_base --freeze_backbone --head_type mlp --dropout 0.3 \
-       --lr 1e-5 --weight_decay 0.01 --epochs 50
+# ── Condition C — full fine-tune, with masks, 100 epochs, patience 20 ───────
+echo "=== Condition C: full fine-tune, with masks ==="
 
-echo ""
-echo ">>> dinov2_base — B: freeze=False, no masks  [RETRAIN: lr=1e-4 caused severe overfit, AUC=0.68]"
-$TRAIN --model dinov2_base --head_type mlp --dropout 0.5 \
-       --lr 1e-5 --weight_decay 0.01 --epochs 100
-
-# ── dinov2_large ─────────────────────────────────────────────────────────────
-echo ""
-echo ">>> dinov2_large — A: freeze=True, no masks  [NEW]"
-$TRAIN --model dinov2_large --freeze_backbone --head_type mlp --dropout 0.3 \
-       --lr 1e-5 --weight_decay 0.01 --epochs 50
-
-echo ""
-echo ">>> dinov2_large — B: freeze=False, no masks  [NEW]"
-$TRAIN --model dinov2_large --head_type mlp --dropout 0.5 \
-       --lr 1e-5 --weight_decay 0.01 --epochs 100
-
-echo ""
-echo ">>> dinov2_large — C: freeze=False, masks  [NEW]"
-$TRAIN --model dinov2_large --head_type mlp --dropout 0.5 \
-       --lr 1e-5 --weight_decay 0.01 --epochs 100 \
-       --masks_dir "$MASKS_DIR"
-
-# ── dinov3_base ───────────────────────────────────────────────────────────────
-echo ""
-echo ">>> dinov3_base — A: freeze=True, no masks  [RETRAIN: was linear head (1538 params), AUC=0.80]"
-$TRAIN --model dinov3_base --freeze_backbone --head_type mlp --dropout 0.3 \
-       --lr 1e-5 --weight_decay 0.01 --epochs 50
+if [[ -z "$MASKS_DIR" ]]; then
+    echo "WARNING: --masks_dir not provided; skipping condition C runs."
+else
+    $TRAIN --model resnet18        $COMMON --masks_dir "$MASKS_DIR" --epochs 100 --patience 20 --lr 1e-4 --weight_decay 1e-5 --batch_size 32 --dropout 0.5
+    $TRAIN --model resnet50        $COMMON --masks_dir "$MASKS_DIR" --epochs 100 --patience 20 --lr 1e-4 --weight_decay 1e-5 --batch_size 16 --dropout 0.5
+    $TRAIN --model densenet121     $COMMON --masks_dir "$MASKS_DIR" --epochs 100 --patience 20 --lr 1e-4 --weight_decay 1e-5 --batch_size 32 --dropout 0.5
+    $TRAIN --model efficientnet_b0 $COMMON --masks_dir "$MASKS_DIR" --epochs 100 --patience 20 --lr 1e-4 --weight_decay 1e-5 --batch_size 16 --dropout 0.5
+    $TRAIN --model clip_vit_base   $COMMON --masks_dir "$MASKS_DIR" --epochs 100 --patience 20 --lr 1e-5 --weight_decay 1e-2 --batch_size 16 --dropout 0.5
+    $TRAIN --model dinov2_base     $COMMON --masks_dir "$MASKS_DIR" --epochs 100 --patience 20 --lr 1e-5 --weight_decay 1e-2 --batch_size 32 --dropout 0.5 --backbone_lr_scale 0.1
+    $TRAIN --model dinov2_large    $COMMON --masks_dir "$MASKS_DIR" --epochs 100 --patience 20 --lr 1e-5 --weight_decay 1e-2 --batch_size 16 --dropout 0.5 --backbone_lr_scale 0.1
+    $TRAIN --model dinov3_base     $COMMON --masks_dir "$MASKS_DIR" --epochs 100 --patience 20 --lr 1e-5 --weight_decay 1e-2 --batch_size 32 --dropout 0.5 --backbone_lr_scale 0.1
+    $TRAIN --model dinov3_large    $COMMON --masks_dir "$MASKS_DIR" --epochs 100 --patience 20 --lr 1e-5 --weight_decay 1e-2 --batch_size 16 --dropout 0.5 --backbone_lr_scale 0.1
+fi
 
 echo ""
-echo ">>> dinov3_base — B: freeze=False, no masks  [NEW]"
-$TRAIN --model dinov3_base --head_type mlp --dropout 0.5 \
-       --lr 1e-5 --weight_decay 0.01 --epochs 100
-
-# ── dinov3_large ──────────────────────────────────────────────────────────────
-echo ""
-echo ">>> dinov3_large — A: freeze=True, no masks  [NEW — previous run had no best.pt]"
-$TRAIN --model dinov3_large --freeze_backbone --head_type mlp --dropout 0.3 \
-       --lr 1e-5 --weight_decay 0.01 --epochs 50
-
-echo ""
-echo ">>> dinov3_large — B: freeze=False, no masks  [NEW]"
-$TRAIN --model dinov3_large --head_type mlp --dropout 0.5 \
-       --lr 1e-5 --weight_decay 0.01 --epochs 100
-
-echo ""
-echo "=========================================================="
-echo "  All training jobs complete."
-echo "  Next: update run dirs in scripts/run_all_evals.sh and"
-echo "  run:  bash scripts/run_all_evals.sh"
-echo "=========================================================="
+echo "=== train_all.sh complete ==="

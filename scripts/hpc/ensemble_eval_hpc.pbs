@@ -1,0 +1,26 @@
+#!/bin/bash
+#PBS -l select=1:ncpus=4:mem=32gb:ngpus=1
+#PBS -l walltime=01:30:00
+#PBS -N ensemble_eval
+#PBS -o logs/ensemble_eval.out
+#PBS -e logs/ensemble_eval.err
+
+PROJECT_DIR="/rds/general/user/zj1024/home/irc-classification-project"
+cd "$PROJECT_DIR"
+mkdir -p logs
+
+# Required for dinov3_large (HuggingFace gated model)
+if [[ ! -f ~/.hf_token ]]; then
+    echo "ERROR: ~/.hf_token not found — create it before submitting this job" >&2
+    exit 1
+fi
+export HF_TOKEN=$(cat ~/.hf_token)
+
+uv run python scripts/ensemble_eval.py \
+  --run_dirs \
+    runs/dinov3_large_20260305_191824 \
+    runs/densenet121_20260228_193830 \
+  --split test \
+  --images_dir "$PROJECT_DIR/data/raw" \
+  --masks_dir "$PROJECT_DIR/data/masks" \
+  --output_dir runs/ensemble_dinov3large_densenet121
