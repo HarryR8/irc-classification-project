@@ -35,3 +35,7 @@ Images/
 Masks/
 raw/
 masks/
+
+
+#Plots for poster
+analysis/final_plots/

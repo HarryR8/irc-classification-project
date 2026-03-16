@@ -77,13 +77,7 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
-from sklearn.metrics import precision_recall_curve, roc_auc_score, roc_curve
-
-# Optional API (newer sklearn): available point-wise confusion terms on score thresholds.
-try:
-    from sklearn.metrics import confusion_matrix_at_thresholds
-except ImportError:
-    confusion_matrix_at_thresholds = None
+from sklearn.metrics import confusion_matrix, roc_auc_score, roc_curve
 
 from busbra.data.loaders import create_dataloaders
 from busbra.training.metrics import find_optimal_thresholds, metrics_at_threshold
@@ -256,115 +250,69 @@ def main():
 
     # Primary evaluation on the requested output split.
     results = evaluate(model, loader, criterion, device)
-    labels = np.asarray(results["labels"], dtype=np.int64)
-    probs = np.asarray(results["probs"], dtype=np.float64)
+    labels = results["labels"]   # (N,) int
+    probs  = results["probs"]    # (N,) float — P(malignant)
 
-    if threshold_source_split == args.split:
-        # Reuse already computed probabilities if threshold source equals eval split.
-        threshold_labels = labels
-        threshold_probs = probs
-    else:
-        # Otherwise evaluate once more on threshold source split (usually validation).
-        print(f"Computing threshold candidates from {threshold_source_split} split metrics...")
-        threshold_results_eval = evaluate(model, threshold_loader, criterion, device)
-        threshold_labels = np.asarray(threshold_results_eval["labels"], dtype=np.int64)
-        threshold_probs = np.asarray(threshold_results_eval["probs"], dtype=np.float64)
+    # ── Metrics ───────────────────────────────────────────────────────────────
+    preds = (probs >= 0.5).astype(int)
+    auc   = roc_auc_score(labels, probs)
+    cm    = confusion_matrix(labels, preds)   # rows=actual, cols=predicted
 
-    try:
-        auc = float(roc_auc_score(labels, probs))
-        fpr, tpr, _ = roc_curve(labels, probs)
-    except ValueError:
-        # Degenerate split with one class only: keep plotting/output resilient.
-        auc = float("nan")
-        fpr = np.array([0.0, 1.0], dtype=np.float64)
-        tpr = np.array([0.0, 1.0], dtype=np.float64)
+    tn, fp, fn, tp = cm.ravel()
+    accuracy    = (tp + tn) / len(labels)
+    sensitivity = tp / (tp + fn) if (tp + fn) > 0 else float("nan")  # recall malignant
+    specificity = tn / (tn + fp) if (tn + fp) > 0 else float("nan")  # recall benign
 
-    # Keep standard binary metrics at the default operating threshold (0.5).
-    baseline_metrics = metrics_at_threshold(labels, probs, threshold=0.5)
-    accuracy = float(baseline_metrics["accuracy"])
-    sensitivity = float(baseline_metrics["sensitivity"])
-    specificity = float(baseline_metrics["specificity"])
-    tn = int(baseline_metrics["tn"])
-    fp = int(baseline_metrics["fp"])
-    fn = int(baseline_metrics["fn"])
-    tp = int(baseline_metrics["tp"])
-
-    threshold_results = find_optimal_thresholds(
-        threshold_labels, threshold_probs, num_thresholds=args.num_thresholds
-    )
-    metrics_df: pd.DataFrame = threshold_results["metrics_df"]
-    threshold_candidates = {
-        "by_roc_youden": threshold_results["by_roc_youden"],
-        "by_max_f1": threshold_results["by_max_f1"],
-        "by_target_sensitivity_95": threshold_results["by_target_sensitivity_95"],
-        "by_target_specificity_90": threshold_results["by_target_specificity_90"],
-    }
-    threshold_candidate_metrics = {
-        # Compute comparable metrics for each selected threshold candidate.
-        key: (metrics_at_threshold(threshold_labels, threshold_probs, thr) if thr is not None else None)
-        for key, thr in threshold_candidates.items()
-    }
-
-    # Save ROC figure for the evaluated split.
-    roc_png = Path(args.roc_png).expanduser().resolve() if args.roc_png else (run_dir / f"eval_{args.split}_roc_curve.png")
-    roc_png.parent.mkdir(parents=True, exist_ok=True)
-    save_roc_curve(roc_png, args.split, fpr, tpr, auc)
-
-    thresholds_csv = (
-        Path(args.thresholds_csv).expanduser().resolve()
-        if args.thresholds_csv
-        else (run_dir / f"eval_{args.split}_threshold_sweep.csv")
-    )
-    thresholds_csv.parent.mkdir(parents=True, exist_ok=True)
-    # Save the full threshold sweep table for analysis in notebooks/spreadsheets.
-    metrics_df.to_csv(thresholds_csv, index=False)
-
-    # Optional sklearn summary of confusion terms on score-derived thresholds.
-    cm_threshold_points = None
-    if confusion_matrix_at_thresholds is not None:
-        try:
-            _, _, _, _, cm_thresholds = confusion_matrix_at_thresholds(threshold_labels, threshold_probs)
-            cm_threshold_points = int(cm_thresholds.shape[0])
-        except ValueError:
-            cm_threshold_points = None
-
-    try:
-        _, _, pr_thresholds = precision_recall_curve(labels, probs)
-        pr_points = int(pr_thresholds.shape[0] + 1)
-    except ValueError:
-        pr_points = 0
-
-    # Human-readable console summary.
+    # ── Print report ──────────────────────────────────────────────────────────
     print("\n" + "=" * 52)
     print(f"  Evaluation - {args.split} split")
     print("=" * 52)
     print(f"  AUC-ROC     : {auc:.4f}")
     print(f"  Accuracy    : {accuracy:.4f}  ({int(tp + tn)}/{len(labels)})")
-    print(f"  Sensitivity : {sensitivity:.4f}  (TP={tp})")
-    print(f"  Specificity : {specificity:.4f}  (TN={tn})")
-    print(f"  F1 @0.50    : {baseline_metrics['f1']:.4f}")
-    print(f"  Optimal thresholds (from {threshold_source_split} metrics):")
-    threshold_name_map = {
-        "by_roc_youden": "ROC Youden J",
-        "by_max_f1": "Max F1",
-        "by_target_sensitivity_95": "Sensitivity >= 0.95",
-        "by_target_specificity_90": "Specificity >= 0.90",
-    }
-    for key, label in threshold_name_map.items():
-        thr = threshold_candidates[key]
-        thr_metrics = threshold_candidate_metrics[key]
-        if thr is None or thr_metrics is None:
-            print(f"    - {label:<24}: not found")
-            continue
-        print(
-            f"    - {label:<24}: thr={thr:.6f}  "
-            f"sens={thr_metrics['sensitivity']:.4f}  "
-            f"spec={thr_metrics['specificity']:.4f}  "
-            f"f1={thr_metrics['f1']:.4f}"
-        )
-    print(f"  ROC curve saved          : {roc_png}")
-    print(f"  Threshold sweep CSV      : {thresholds_csv}")
+    print(f"  Sensitivity : {sensitivity:.4f}  (malignant recall, TP={tp})")
+    print(f"  Specificity : {specificity:.4f}  (benign recall,    TN={tn})")
+    print()
+    print("  Confusion matrix (rows=actual, cols=predicted):")
+    print("                Pred benign  Pred malignant")
+    print(f"  Act benign        {tn:5d}          {fp:5d}")
+    print(f"  Act malignant     {fn:5d}          {tp:5d}")
     print("=" * 52)
+
+    # ── Threshold analysis ────────────────────────────────────────────────────
+    baseline_metrics = metrics_at_threshold(labels, probs, threshold=0.5)
+
+    # Compute optimal thresholds from the designated threshold source split.
+    if threshold_loader is loader:
+        thr_labels, thr_probs = labels, probs
+    else:
+        thr_results = evaluate(model, threshold_loader, criterion, device)
+        thr_labels, thr_probs = thr_results["labels"], thr_results["probs"]
+
+    optimal = find_optimal_thresholds(thr_labels, thr_probs, num_thresholds=args.num_thresholds)
+    metrics_df = optimal["metrics_df"]
+    threshold_candidates = {k: v for k, v in optimal.items() if k != "metrics_df"}
+    threshold_candidate_metrics = {
+        k: (metrics_at_threshold(thr_labels, thr_probs, threshold=optimal[k]) if optimal[k] is not None else None)
+        for k in threshold_candidates
+    }
+
+    # Save threshold sweep CSV.
+    thresholds_csv = (
+        Path(args.thresholds_csv) if args.thresholds_csv
+        else run_dir / f"eval_{args.split}_threshold_sweep.csv"
+    )
+    metrics_df.to_csv(thresholds_csv, index=False)
+
+    # Compute ROC curve for main eval split and save PNG.
+    fpr, tpr, _ = roc_curve(labels, probs)
+    roc_png = (
+        Path(args.roc_png) if args.roc_png
+        else run_dir / f"eval_{args.split}_roc_curve.png"
+    )
+    save_roc_curve(roc_png, args.split, fpr, tpr, auc)
+
+    pr_points = int(metrics_df.shape[0])
+    cm_threshold_points = int(metrics_df.shape[0])
 
     best_threshold = threshold_candidates["by_roc_youden"]
     best_threshold_metrics = threshold_candidate_metrics["by_roc_youden"]
