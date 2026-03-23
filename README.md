@@ -1,4 +1,4 @@
-# _SonoNet_ - IRC Classification Project
+# A Modular Transfer Learning Pipeline for Medical Image Classification
 **Classification of benign/malignant tumours from medical images (breast ultrasound).**
 
 ## Goal
