@@ -57,6 +57,8 @@ irc-classification-project/
 │   ├── search.py             # ✅ Grid search over hyperparameters
 │   ├── sanity_dataloader.py  # ✅ Verify batch shapes/dtypes
 │   ├── ensemble_eval.py      # ✅ Ensemble inference across multiple checkpoints
+│   ├── collect_results.py    # ✅ Aggregate run evaluations → results/summary.csv
+│   ├── plot_epoch_roc.py     # ✅ Plot per-epoch ROC curves from epoch_test_preds.npz
 │   └── hpc/                  # HPC PBS job scripts and shell convenience wrappers
 ├── src/busbra/
 │   ├── data/
@@ -72,15 +74,23 @@ irc-classification-project/
 │       ├── trainer.py        # ✅ train_one_epoch + evaluate functions
 │       ├── metrics.py        # ✅ Pure metrics library (metrics_at_threshold, sweep_thresholds, find_optimal_thresholds)
 │       └── __init__.py       # ✅ Public exports
-└── data/
-    ├── raw/            ← 🚨 put dataset (BUS-BRA) here
-    │   ├── bus_data.csv
-    │   ├── bus_0001-l.png
-    │   └── ...
-    └── splits/         ← ✅ created by prepare_data.py
-        ├── patient_splits.csv  # patient ID + split assignment (for auditing)
-        ├── split_info.json     # split metadata
-        └── splits.csv          # ID + Case + label + filename + split
+├── data/
+│   ├── raw/            ← 🚨 put dataset (BUS-BRA) here
+│   │   ├── bus_data.csv
+│   │   ├── bus_0001-l.png
+│   │   └── ...
+│   ├── masks/          ← 🚨 optional: lesion segmentation masks (enables --masks_dir)
+│   │   ├── mask_0001-l.png
+│   │   └── ...
+│   └── splits/         ← ✅ created by prepare_data.py
+│       ├── patient_splits.csv  # patient ID + split assignment (for auditing)
+│       ├── split_info.json     # split metadata
+│       └── splits.csv          # ID + Case + label + filename + split
+└── results/            ← ✅ created by collect_results.py
+    ├── summary.csv           # one row per evaluated run, all metrics
+    ├── roc_curves/           # per-run FPR/TPR arrays (.npz)
+    ├── confusion_matrices/   # per-run TP/FP/TN/FN (.json)
+    └── training_curves/      # per-run history.json copies
 ```
 
 ## Data pipeline

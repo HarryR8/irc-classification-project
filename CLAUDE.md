@@ -41,6 +41,16 @@ uv run python scripts/search.py --models resnet18 --epochs 5 --head_type mlp
 uv run python scripts/ensemble_eval.py \
   --run_dirs runs/<model_a>_<timestamp> runs/<model_b>_<timestamp>
 
+# Aggregate all evaluated runs into results/summary.csv + ROC/CM/training-curve files
+uv run python scripts/collect_results.py
+uv run python scripts/collect_results.py --poster_only          # 6 poster-key runs only
+uv run python scripts/collect_results.py --runs runs/resnet18_* # specific runs
+
+# Plot per-epoch ROC curves from epoch_test_preds.npz (written by train.py each epoch)
+uv run python scripts/plot_epoch_roc.py --run_dir runs/<model>_<timestamp>
+uv run python scripts/plot_epoch_roc.py \
+  --run_dirs runs/<model_a>_<timestamp> runs/<model_b>_<timestamp>  # comparison plot
+
 # Run tests
 uv run pytest
 uv run pytest tests/test_specific.py::test_name   # single test
@@ -96,3 +106,11 @@ HPC results are synced to `results_bundle/` (treated as equally authoritative as
 - `pin_memory=True` produces a harmless warning on MPS (Apple Silicon) — expected.
 - Data splits are patient-level stratified: train 1316 / val 285 / test 274 images.
 - `--freeze_backbone` in `train.py` is `store_true` (default `False`); the per-model `MODEL_TRAINING_CONFIGS` entry for `freeze_backbone` is **not** automatically applied via CLI — pass `--freeze_backbone` explicitly for DINO/CLIP frozen training.
+
+## Extension Points
+
+**New backbone** — add an entry to `MODEL_REGISTRY` in `src/busbra/models/factory.py` (keys: `type`, `timm_name`/`hf_name`, `embedding_dim`, `preprocess_key`), add a builder branch to `create_backbone()` if the type is new, and add per-model hyperparameter defaults to `MODEL_TRAINING_CONFIGS` in `scripts/train.py`.
+
+**New head** — define an `nn.Module` in `src/busbra/models/heads.py` and add a branch to `create_head()` keyed by the `head_type` string. Pass `--head_type <name>` at the CLI.
+
+**New preprocessing** — write a factory function in `src/busbra/data/preprocessing.py` and add a branch to `get_preprocess()`. Reference the new key in the model's `preprocess_key` registry entry.
