@@ -1,5 +1,5 @@
 # A Modular Transfer Learning Pipeline for Medical Image Classification
-**Classification of benign/malignant tumours from medical images (breast ultrasound).**
+**Classification of benign/malignant tumours from medical imaging (breast ultrasound).**
 
 ## Goal
 Build a **reproducible** ML pipeline to classify **benign vs malignant** tumours, with honest evaluation (patient-level splits where applicable).
@@ -21,7 +21,7 @@ diagnostic accuracy on an entirely novel, independent dataset.
 
 ## Rationale
 Ultrasound serves as a superior breast cancer imaging modality in younger women
-and women with greater breast density, and it does not subject patients to ionising
+and women with greater breast density. Furthermore, it does not subject patients to ionising
 radiation or intravenous contrast, unlike X-ray mammography. Breast Imaging
 Reporting and Data System (BI-RADS) represents the current gold standard as a
 risk assessment tool and universal reporting system for breast cancer screening,
